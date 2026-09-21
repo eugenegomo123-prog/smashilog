@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { api, LEVELS, type Level, type Match, type Player, type ProjectedMatch, type Session } from "../api";
+import { api, LEVELS, LEVEL_ICON, LEVEL_LABEL, type Level, type Match, type Player, type ProjectedMatch, type Session } from "../api";
 import { playerKey } from "./ParticipantJoin";
 
 type Tab = "dashboard" | "ongoing" | "queue" | "ranking" | "history";
@@ -89,12 +89,12 @@ export default function ParticipantSession() {
       {tab === "ranking" && <RankingTab players={players.filter((p) => p.approved)} />}
       {tab === "history" && <HistoryTab history={matchData.history} playerById={playerById} />}
 
-      <nav className="tabs">
-        {!isEnded && <button className={tab === "dashboard" ? "active" : ""} onClick={() => setTab("dashboard")}>Dashboard</button>}
-        {!isEnded && <button className={tab === "ongoing" ? "active" : ""} onClick={() => setTab("ongoing")}>Courts</button>}
-        {!isEnded && <button className={tab === "queue" ? "active" : ""} onClick={() => setTab("queue")}>Queue</button>}
-        <button className={tab === "ranking" ? "active" : ""} onClick={() => setTab("ranking")}>Ranking</button>
-        <button className={tab === "history" ? "active" : ""} onClick={() => setTab("history")}>History</button>
+            <nav className="tabs">
+        {!isEnded && <button className={tab === "dashboard" ? "active" : ""} onClick={() => setTab("dashboard")}>🏠 Dashboard</button>}
+        {!isEnded && <button className={tab === "ongoing" ? "active" : ""} onClick={() => setTab("ongoing")}>🏸 Courts</button>}
+        {!isEnded && <button className={tab === "queue" ? "active" : ""} onClick={() => setTab("queue")}>⏳ Queue</button>}
+        <button className={tab === "ranking" ? "active" : ""} onClick={() => setTab("ranking")}>🏆 Ranking</button>
+        <button className={tab === "history" ? "active" : ""} onClick={() => setTab("history")}>📜 History</button>
       </nav>
     </div>
   );
@@ -113,7 +113,7 @@ function DashboardTab({ player, onChanged }: { player: Player; onChanged: () => 
           <div style={{ fontSize: 28, fontWeight: 700 }}>{winPct}%</div>
           <div style={{ fontSize: 13, color: "var(--muted)" }}>Win rate · {player.wins}W-{player.losses}L</div>
         </div>
-        <div className="level-pill" style={{ width: 40, height: 40, fontSize: 18 }}>{player.level}</div>
+        <div className="level-pill" style={{ width: 44, height: 44, fontSize: 22 }} title={LEVEL_LABEL[player.level]}>{LEVEL_ICON[player.level]}</div>
       </div>
       <div className="card">
         <label>My level</label>
@@ -126,7 +126,7 @@ function DashboardTab({ player, onChanged }: { player: Player; onChanged: () => 
         >
           {LEVELS.map((l) => (
             <option key={l} value={l}>
-              Level {l}
+              {LEVEL_ICON[l]} {l} · {LEVEL_LABEL[l]}
             </option>
           ))}
         </select>
@@ -220,7 +220,7 @@ function RankingTab({ players }: { players: Player[] }) {
           {sorted.map((p, i) => (
             <tr key={p.id}>
               <td>{i + 1}</td>
-              <td>{p.name} <span style={{ color: "var(--muted)" }}>({p.level})</span></td>
+              <td>{p.name} <span style={{ color: "var(--muted)" }}>{LEVEL_ICON[p.level]} {p.level}</span></td>
               <td>{p.wins}-{p.losses}</td>
               <td>{p.gamesPlayed ? Math.round((p.wins / p.gamesPlayed) * 100) : 0}%</td>
               <td>{p.currentStreak > 0 ? `W${p.currentStreak}` : p.currentStreak < 0 ? `L${-p.currentStreak}` : "-"}</td>
