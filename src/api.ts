@@ -123,7 +123,7 @@ export const LEVEL_ICON: Record<Level, string> = {
 
 export const LEVEL_LABEL: Record<Level, string> = {
   E: "Egg",
-  D: "Hatching",
+  D: "Hatchling",
   C: "Chick",
   B: "Chicken",
   A: "Roast",
