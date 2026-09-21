@@ -111,3 +111,20 @@ export const api = {
 };
 
 export const LEVELS: Level[] = ["A", "B", "C", "D", "E"];
+
+// Cute egg-to-chicken icons for each skill level.
+export const LEVEL_ICON: Record<Level, string> = {
+  E: "🥚",
+  D: "🐣",
+  C: "🐤",
+  B: "🐔",
+  A: "🍗",
+};
+
+export const LEVEL_LABEL: Record<Level, string> = {
+  E: "Egg",
+  D: "Hatching",
+  C: "Chick",
+  B: "Chicken",
+  A: "Roast",
+};
