@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/api.ts","./src/main.tsx","./src/pages/home.tsx","./src/pages/hostlogin.tsx","./src/pages/hostsession.tsx","./src/pages/hostsessions.tsx","./src/pages/participantjoin.tsx","./src/pages/participantsession.tsx","./src/pages/participantsessions.tsx"],"version":"5.9.3"}

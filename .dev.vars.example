@@ -1,0 +1,12 @@
+# Copy this file to `.dev.vars` and fill in real values for local development.
+# `.dev.vars` is read by the Worker (via `npm run dev` / wrangler) and must never be committed.
+#
+# For production, set these as Worker secrets instead:
+#   npx wrangler secret put DATABASE_URL
+#   npx wrangler secret put HOST_PASSWORD
+
+# Postgres connection string (e.g. from Neon). Required.
+DATABASE_URL="postgresql://user:password@host/dbname?sslmode=require"
+
+# Shared password for host-only actions. Optional -- defaults to "queuemaster" if unset.
+HOST_PASSWORD="queuemaster"

@@ -1,0 +1,113 @@
+export type Level = "A" | "B" | "C" | "D" | "E";
+export type PlayerStatus = "active" | "resting" | "inactive";
+
+export interface Session {
+  id: number;
+  name: string;
+  status: "active" | "ended";
+  courtCount: number;
+  courtLabels: string[];
+  createdAt: string;
+  endedAt: string | null;
+}
+
+export interface Player {
+  id: number;
+  sessionId: number;
+  name: string;
+  level: Level;
+  requestedLevel: Level | null;
+  status: PlayerStatus;
+  approved: boolean;
+  wins: number;
+  losses: number;
+  pointsFor: number;
+  pointsAgainst: number;
+  currentStreak: number;
+  gamesPlayed: number;
+  lastMatchEndedAt: string | null;
+  createdAt: string;
+}
+
+export interface Match {
+  id: number;
+  sessionId: number;
+  courtLabel: string;
+  team1: number[];
+  team2: number[];
+  status: "ongoing" | "completed";
+  score1: number | null;
+  score2: number | null;
+  startedAt: string;
+  endedAt: string | null;
+}
+
+export interface ProjectedPlayer {
+  id: number;
+  level: Level;
+}
+
+export interface ProjectedMatch {
+  team1: ProjectedPlayer[];
+  team2: ProjectedPlayer[];
+}
+
+function hostToken(): string | null {
+  return localStorage.getItem("smashilog_host_token");
+}
+
+async function request<T>(path: string, opts: RequestInit = {}): Promise<T> {
+  const headers = new Headers(opts.headers);
+  headers.set("Content-Type", "application/json");
+  const token = hostToken();
+  if (token) headers.set("x-host-token", token);
+  const res = await fetch(`/api${path}`, { ...opts, headers });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(body.error || `Request failed (${res.status})`);
+  }
+  if (res.status === 204) return undefined as T;
+  return res.json();
+}
+
+export const api = {
+  hostLogin: (password: string) =>
+    request<{ token: string }>("/host-auth", { method: "POST", body: JSON.stringify({ password }) }),
+  setHostToken: (token: string) => localStorage.setItem("smashilog_host_token", token),
+  clearHostToken: () => localStorage.removeItem("smashilog_host_token"),
+  isHost: () => !!hostToken(),
+
+  listSessions: () => request<Session[]>("/sessions"),
+  createSession: (name: string, courtCount: number) =>
+    request<Session>("/sessions", { method: "POST", body: JSON.stringify({ name, courtCount }) }),
+  getSession: (id: number) => request<Session>(`/sessions/${id}`),
+  updateSession: (id: number, updates: Partial<Pick<Session, "status" | "name" | "courtCount" | "courtLabels">>) =>
+    request<Session>(`/sessions/${id}`, { method: "PATCH", body: JSON.stringify(updates) }),
+  deleteSession: (id: number) => request<{ ok: true }>(`/sessions/${id}`, { method: "DELETE" }),
+
+  listPlayers: (sessionId: number) => request<Player[]>(`/sessions/${sessionId}/players`),
+  joinSession: (sessionId: number, name: string, requestedLevel: Level) =>
+    request<Player>(`/sessions/${sessionId}/players`, {
+      method: "POST",
+      body: JSON.stringify({ name, requestedLevel }),
+    }),
+  addPlayer: (sessionId: number, name: string, level: Level) =>
+    request<Player>(`/sessions/${sessionId}/players`, {
+      method: "POST",
+      body: JSON.stringify({ name, requestedLevel: level }),
+    }),
+  updatePlayer: (
+    id: number,
+    updates: Partial<Pick<Player, "level" | "status" | "approved" | "name">>,
+  ) => request<Player>(`/players/${id}`, { method: "PATCH", body: JSON.stringify(updates) }),
+  removePlayer: (id: number) => request<{ ok: true }>(`/players/${id}`, { method: "DELETE" }),
+
+  getMatches: (sessionId: number) =>
+    request<{ ongoing: Match[]; history: Match[]; queue: ProjectedMatch[] }>(`/sessions/${sessionId}/matches`),
+  regenerateQueue: (sessionId: number) =>
+    request<{ ok: true }>(`/sessions/${sessionId}/regenerate`, { method: "POST" }),
+  submitScore: (matchId: number, score1: number, score2: number) =>
+    request<{ ok: true }>(`/matches/${matchId}`, { method: "PATCH", body: JSON.stringify({ score1, score2 }) }),
+};
+
+export const LEVELS: Level[] = ["A", "B", "C", "D", "E"];

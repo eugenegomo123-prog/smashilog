@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "smashilog",
+  "main": "./worker/index.ts",
+  // Bump this whenever you want to opt into newer Workers runtime behavior.
+  "compatibility_date": "2026-09-20",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    // "directory" is intentionally omitted: the Cloudflare Vite plugin always writes
+    // the client build to dist/client and fills this in automatically at build time.
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+  "observability": {
+    "enabled": true
+  }
+}
