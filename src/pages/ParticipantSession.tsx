@@ -220,7 +220,7 @@ function RankingTab({ players }: { players: Player[] }) {
           {sorted.map((p, i) => (
             <tr key={p.id}>
               <td>{i + 1}</td>
-              <td>{p.name} <span style={{ color: "var(--muted)" }}>{LEVEL_ICON[p.level]} {p.level}</span></td>
+              <td>{p.name} <span style={{ color: "var(--muted)" }}>{LEVEL_ICON[p.level]}</span></td>
               <td>{p.wins}-{p.losses}</td>
               <td>{p.gamesPlayed ? Math.round((p.wins / p.gamesPlayed) * 100) : 0}%</td>
               <td>{p.currentStreak > 0 ? `W${p.currentStreak}` : p.currentStreak < 0 ? `L${-p.currentStreak}` : "-"}</td>
