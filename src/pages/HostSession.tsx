@@ -634,7 +634,9 @@ function PodiumPlace({ place, player }: { place: 1 | 2 | 3; player?: Player }) {
     <div className={`podium-place ${rankClass}`}>
       {place === 1 && <div className="podium-crown">👑</div>}
       <div className="podium-avatar">{LEVEL_ICON[player.level]}</div>
-      <div className="podium-name">{player.name}</div>
+      <div className="podium-name">
+        {player.name} {player.currentStreak >= 3 && <span title={`${player.currentStreak}-win streak`}>🔥</span>}
+      </div>
       <div className="podium-record">{player.wins}-{player.losses} · {winPct}%</div>
       <div className="podium-stand">{place}</div>
     </div>
