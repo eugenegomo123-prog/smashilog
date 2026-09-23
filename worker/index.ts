@@ -189,7 +189,13 @@ app.post("/api/sessions/:id/assign-match", async (c) => {
 
   const involved = new Set<number>([...(suggested.team1 as number[]), ...(suggested.team2 as number[])]);
   const busy = await playerIdsInOngoingMatches(db, sessionId);
+  const sessionPlayers = await db.select().from(players).where(eq(players.sessionId, sessionId));
+  const playerMap = new Map(sessionPlayers.map((p) => [p.id, p]));
   for (const pid of involved) {
+    const p = playerMap.get(pid);
+    if (!p || !p.approved || p.status !== "active") {
+      return c.json({ error: "One of these players is no longer active -- try regenerating." }, 400);
+    }
     if (busy.has(pid)) {
       return c.json({ error: "One of these players is already on a court -- try regenerating." }, 400);
     }
@@ -278,9 +284,23 @@ app.patch("/api/players/:id", async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const updates: Record<string, unknown> = {};
 
-  // Self-service: any participant can change their own level or status.
+  // Self-service: any participant can change their own level, status, or preferred partner.
   if (LEVELS.includes(body.level)) updates.level = body.level;
   if (STATUSES.includes(body.status)) updates.status = body.status;
+  if (body.preferredPartnerId === null) {
+    updates.preferredPartnerId = null;
+  } else if (body.preferredPartnerId !== undefined && Number.isFinite(Number(body.preferredPartnerId))) {
+    const partnerId = Number(body.preferredPartnerId);
+    if (partnerId === id) {
+      return c.json({ error: "Can't set yourself as your own preferred partner" }, 400);
+    }
+    const [existing] = await db.select().from(players).where(eq(players.id, id));
+    const [partner] = await db.select().from(players).where(eq(players.id, partnerId));
+    if (!existing || !partner || partner.sessionId !== existing.sessionId || !partner.approved) {
+      return c.json({ error: "Unknown player" }, 400);
+    }
+    updates.preferredPartnerId = partnerId;
+  }
 
   // Host-only: approve join requests, override level/status/name.
   if (isHost) {
@@ -343,7 +363,8 @@ app.patch("/api/matches/:id", async (c) => {
   return c.json({ ok: true });
 });
 
-// DELETE /api/matches/:id -- remove a completed match from history and recompute stats.
+// DELETE /api/matches/:id -- remove a match (in-progress or completed). Stats are
+// always recomputed afterward; harmless when the match had no score yet.
 app.delete("/api/matches/:id", async (c) => {
   const id = Number(c.req.param("id"));
   if (!Number.isFinite(id)) return c.text("Invalid match id", 400);
