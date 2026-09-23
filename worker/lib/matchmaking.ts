@@ -10,6 +10,7 @@ export interface PlayerForMatchmaking {
   pointsAgainst: number;
   gamesPlayed: number;
   lastMatchEndedAt: string | null;
+  preferredPartnerId: number | null;
 }
 
 const LEVEL_SCORE: Record<string, number> = { A: 5, B: 4, C: 3, D: 2, E: 1 };
@@ -44,12 +45,18 @@ export interface SuggestedSplit {
 }
 
 // Extra "cost" added when a pairing would repeat either player's most recent
-// partner -- big enough that the generator prefers a fresh pairing unless doing
-// so would make the match meaningfully less balanced.
+// partner, and a "discount" applied when a pairing matches either player's stated
+// preferred partner -- both sized so the generator leans that way without
+// overriding a much better-balanced alternative.
 const REPEAT_PARTNER_PENALTY = 2.5;
+const PREFERRED_PARTNER_BONUS = 2.5;
+
+function preferredTogether(a: PlayerForMatchmaking, b: PlayerForMatchmaking): boolean {
+  return a.preferredPartnerId === b.id || b.preferredPartnerId === a.id;
+}
 
 // All 3 ways to split 4 players into two teams, ranked best (lowest skill gap +
-// repeat-partner penalty) to worst.
+// repeat-partner penalty - preferred-partner bonus) to worst.
 function allSplitsRanked(
   four: PlayerForMatchmaking[],
   lastPartnerOf: Map<number, number>,
@@ -68,14 +75,17 @@ function allSplitsRanked(
       const repeats =
         (lastPartnerOf.get(team1[0].id) === team1[1].id ? 1 : 0) +
         (lastPartnerOf.get(team2[0].id) === team2[1].id ? 1 : 0);
-      return { team1, team2, score: gap + repeats * REPEAT_PARTNER_PENALTY };
+      const preferred =
+        (preferredTogether(team1[0], team1[1]) ? 1 : 0) + (preferredTogether(team2[0], team2[1]) ? 1 : 0);
+      const score = gap + repeats * REPEAT_PARTNER_PENALTY - preferred * PREFERRED_PARTNER_BONUS;
+      return { team1, team2, score };
     })
     .sort((x, y) => x.score - y.score)
     .map(({ team1, team2 }) => ({ team1, team2 }));
 }
 
 // Given exactly 4 players, find the 2v2 split that best balances skill while
-// preferring not to repeat either player's most recent partner.
+// favoring stated partner preferences and avoiding either player's most recent partner.
 export function bestSplitAvoidingRepeats(
   four: PlayerForMatchmaking[],
   lastPartnerOf: Map<number, number>,
