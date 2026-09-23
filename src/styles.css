@@ -392,6 +392,109 @@ table.ranking th {
   background: var(--panel);
 }
 
+.podium {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px 12px 0;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 8px rgba(180, 140, 20, 0.08);
+  overflow: hidden;
+}
+
+.podium-place {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  min-width: 0;
+}
+
+.podium-crown {
+  font-size: 22px;
+  line-height: 1;
+  margin-bottom: 4px;
+  animation: podium-bob 2s ease-in-out infinite;
+}
+
+@keyframes podium-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+.podium-avatar {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  margin-bottom: 8px;
+  border: 3px solid var(--panel);
+  box-shadow: inset 0 -3px 0 rgba(0,0,0,0.08);
+  background: linear-gradient(160deg, #f3f3f3, #d5d9de);
+}
+
+.podium-place.gold .podium-avatar {
+  width: 62px;
+  height: 62px;
+  font-size: 30px;
+  background: linear-gradient(160deg, #fff3b0, #ffcc33);
+  box-shadow: inset 0 -3px 0 rgba(0,0,0,0.08), 0 0 0 6px rgba(255, 194, 51, 0.25);
+}
+
+.podium-place.bronze .podium-avatar {
+  background: linear-gradient(160deg, #f3cd9e, #d6924f);
+}
+
+.podium-name {
+  font-weight: 700;
+  font-size: 13px;
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.podium-record {
+  font-size: 11px;
+  color: var(--muted);
+  margin: 2px 0 8px;
+}
+
+.podium-stand {
+  width: 100%;
+  border-radius: 10px 10px 0 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 6px;
+  font-weight: 800;
+  font-size: 18px;
+  color: #4a3200;
+}
+
+.podium-place.gold .podium-stand {
+  height: 72px;
+  background: linear-gradient(160deg, #ffe066, var(--accent));
+}
+
+.podium-place.silver .podium-stand {
+  height: 52px;
+  background: linear-gradient(160deg, #f0f1f3, #c9ced6);
+}
+
+.podium-place.bronze .podium-stand {
+  height: 38px;
+  background: linear-gradient(160deg, #f3cd9e, #d6924f);
+}
+
 .empty-state {
   color: var(--muted);
   text-align: center;
