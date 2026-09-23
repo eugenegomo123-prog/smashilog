@@ -305,6 +305,7 @@ function ScoreCard({
   const [score1, setScore1] = useState("");
   const [score2, setScore2] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [removing, setRemoving] = useState(false);
 
   async function submit() {
     if (score1 === "" || score2 === "") return;
@@ -314,6 +315,17 @@ function ScoreCard({
       await onChanged();
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function remove() {
+    if (!confirm("Remove this match without recording a score? The court and players will be freed up.")) return;
+    setRemoving(true);
+    try {
+      await api.deleteMatch(match.id);
+      await onChanged();
+    } finally {
+      setRemoving(false);
     }
   }
 
@@ -329,6 +341,9 @@ function ScoreCard({
           End
         </button>
       </div>
+      <button className="btn small danger" style={{ marginTop: 8 }} onClick={remove} disabled={removing}>
+        {removing ? "Removing…" : "Remove match"}
+      </button>
     </div>
   );
 }
