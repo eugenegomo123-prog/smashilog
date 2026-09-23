@@ -35,21 +35,11 @@ export interface Match {
   courtLabel: string;
   team1: number[];
   team2: number[];
-  status: "ongoing" | "completed";
+  status: "ongoing" | "completed" | "suggested";
   score1: number | null;
   score2: number | null;
   startedAt: string;
   endedAt: string | null;
-}
-
-export interface ProjectedPlayer {
-  id: number;
-  level: Level;
-}
-
-export interface ProjectedMatch {
-  team1: ProjectedPlayer[];
-  team2: ProjectedPlayer[];
 }
 
 function hostToken(): string | null {
@@ -103,11 +93,22 @@ export const api = {
   removePlayer: (id: number) => request<{ ok: true }>(`/players/${id}`, { method: "DELETE" }),
 
   getMatches: (sessionId: number) =>
-    request<{ ongoing: Match[]; history: Match[]; queue: ProjectedMatch[] }>(`/sessions/${sessionId}/matches`),
-  regenerateQueue: (sessionId: number) =>
+    request<{ ongoing: Match[]; history: Match[]; suggested: Match[] }>(`/sessions/${sessionId}/matches`),
+  regenerateSuggestions: (sessionId: number) =>
     request<{ ok: true }>(`/sessions/${sessionId}/regenerate`, { method: "POST" }),
+  assignMatch: (sessionId: number, matchId: number, courtLabel: string) =>
+    request<{ ok: true }>(`/sessions/${sessionId}/assign-match`, {
+      method: "POST",
+      body: JSON.stringify({ matchId, courtLabel }),
+    }),
+  createCustomMatch: (sessionId: number, courtLabel: string, team1: [number, number], team2: [number, number]) =>
+    request<Match>(`/sessions/${sessionId}/custom-match`, {
+      method: "POST",
+      body: JSON.stringify({ courtLabel, team1, team2 }),
+    }),
   submitScore: (matchId: number, score1: number, score2: number) =>
     request<{ ok: true }>(`/matches/${matchId}`, { method: "PATCH", body: JSON.stringify({ score1, score2 }) }),
+  deleteMatch: (matchId: number) => request<{ ok: true }>(`/matches/${matchId}`, { method: "DELETE" }),
 };
 
 export const LEVELS: Level[] = ["A", "B", "C", "D", "E"];
@@ -123,7 +124,7 @@ export const LEVEL_ICON: Record<Level, string> = {
 
 export const LEVEL_LABEL: Record<Level, string> = {
   E: "Egg",
-  D: "Hatchling",
+  D: "Hatching",
   C: "Chick",
   B: "Chicken",
   A: "Roast",
