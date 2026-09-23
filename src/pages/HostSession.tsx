@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { api, LEVELS, LEVEL_ICON, LEVEL_LABEL, type Session, type Player, type Match, type ProjectedMatch, type Level } from "../api";
+import { api, LEVELS, LEVEL_ICON, LEVEL_LABEL, type Session, type Player, type Match, type Level } from "../api";
 
 type Tab = "players" | "courts" | "queue" | "ranking" | "history" | "settings";
 
@@ -11,10 +11,10 @@ export default function HostSession() {
   const [tab, setTab] = useState<Tab>("players");
   const [session, setSession] = useState<Session | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
-  const [matchData, setMatchData] = useState<{ ongoing: Match[]; history: Match[]; queue: ProjectedMatch[] }>({
+  const [matchData, setMatchData] = useState<{ ongoing: Match[]; history: Match[]; suggested: Match[] }>({
     ongoing: [],
     history: [],
-    queue: [],
+    suggested: [],
   });
   const [error, setError] = useState("");
 
@@ -74,12 +74,22 @@ export default function HostSession() {
       {tab === "courts" && (
         <CourtsTab session={session} ongoing={matchData.ongoing} playerById={playerById} onChanged={load} />
       )}
-      {tab === "queue" && <QueueTab queue={matchData.queue} playerById={(id) => players.find((p) => p.id === id)} sessionId={sessionId} onChanged={load} />}
+      {tab === "queue" && (
+        <QueueTab
+          session={session}
+          suggested={matchData.suggested}
+          ongoing={matchData.ongoing}
+          players={players}
+          playerById={playerById}
+          sessionId={sessionId}
+          onChanged={load}
+        />
+      )}
       {tab === "ranking" && <RankingTab players={players.filter((p) => p.approved)} />}
       {tab === "history" && <HistoryTab history={matchData.history} playerById={playerById} onChanged={load} />}
       {tab === "settings" && <SettingsTab session={session} onChanged={load} />}
 
-            <nav className="tabs">
+      <nav className="tabs">
         <TabButton active={tab === "players"} onClick={() => setTab("players")} label="🧑‍🤝‍🧑 Players" badge={pending.length} />
         <TabButton active={tab === "courts"} onClick={() => setTab("courts")} label="🏸 Courts" />
         <TabButton active={tab === "queue"} onClick={() => setTab("queue")} label="⏳ Queue" />
@@ -134,7 +144,7 @@ function PlayersTab({
               <div key={p.id} className="card row between">
                 <div>
                   <div style={{ fontWeight: 600 }}>{p.name}</div>
-                                    <div style={{ fontSize: 13, color: "var(--muted)" }}>
+                  <div style={{ fontSize: 13, color: "var(--muted)" }}>
                     Requested level {p.requestedLevel ? `${LEVEL_ICON[p.requestedLevel]} ` : ""}{p.requestedLevel}
                   </div>
                 </div>
@@ -167,7 +177,7 @@ function PlayersTab({
       <h3 style={{ fontSize: 15, color: "var(--muted)", marginTop: pending.length ? 24 : 0 }}>Add a player</h3>
       <form className="card row" onSubmit={addPlayer}>
         <input placeholder="Player name" value={name} onChange={(e) => setName(e.target.value)} />
-                <select value={level} onChange={(e) => setLevel(e.target.value as Level)} style={{ width: 110 }}>
+        <select value={level} onChange={(e) => setLevel(e.target.value as Level)} style={{ width: 110 }}>
           {LEVELS.map((l) => (
             <option key={l} value={l}>
               {LEVEL_ICON[l]} {l}
@@ -183,7 +193,7 @@ function PlayersTab({
       <div className="stack">
         {approved.map((p) => (
           <div key={p.id} className="card">
-                        <div className="row between">
+            <div className="row between">
               <div className="row">
                 <div className="level-pill" title={LEVEL_LABEL[p.level]}>{LEVEL_ICON[p.level]}</div>
                 <div>
@@ -203,7 +213,7 @@ function PlayersTab({
                   onChanged();
                 }}
               >
-                                {LEVELS.map((l) => (
+                {LEVELS.map((l) => (
                   <option key={l} value={l}>
                     {LEVEL_ICON[l]} {l} · {LEVEL_LABEL[l]}
                   </option>
@@ -249,9 +259,6 @@ function CourtsTab({
   playerById: (id: number) => Player | undefined;
   onChanged: () => void;
 }) {
-  const { id } = useParams();
-  const sessionId = Number(id);
-  const [regenerating, setRegenerating] = useState(false);
   const emptyCourts = session.courtLabels.filter((label) => !ongoing.some((m) => m.courtLabel === label));
 
   return (
@@ -260,18 +267,6 @@ function CourtsTab({
         <div style={{ fontSize: 13, color: "var(--muted)" }}>
           {ongoing.length} of {session.courtCount} courts in play
         </div>
-        <button
-          className="btn small"
-          disabled={regenerating}
-          onClick={async () => {
-            setRegenerating(true);
-            await api.regenerateQueue(sessionId);
-            await onChanged();
-            setRegenerating(false);
-          }}
-        >
-          {regenerating ? "Regenerating…" : "Regenerate queue"}
-        </button>
       </div>
       <div className="stack">
         {ongoing.map((m) => (
@@ -279,7 +274,7 @@ function CourtsTab({
         ))}
         {emptyCourts.map((label) => (
           <div key={label} className="match-card empty-state">
-            {label} — open
+            {label} — open · assign a match from the Queue tab
           </div>
         ))}
       </div>
@@ -336,44 +331,229 @@ function TeamLine({ ids, playerById }: { ids: number[]; playerById: (id: number)
 }
 
 function QueueTab({
-  queue,
+  session,
+  suggested,
+  ongoing,
+  players,
   playerById,
   sessionId,
   onChanged,
 }: {
-  queue: ProjectedMatch[];
+  session: Session;
+  suggested: Match[];
+  ongoing: Match[];
+  players: Player[];
   playerById: (id: number) => Player | undefined;
   sessionId: number;
   onChanged: () => void;
 }) {
+  const [regenerating, setRegenerating] = useState(false);
+  const openCourts = session.courtLabels.filter((label) => !ongoing.some((m) => m.courtLabel === label));
+
   return (
     <div>
       <div className="row between" style={{ marginBottom: 16 }}>
-        <div style={{ fontSize: 13, color: "var(--muted)" }}>Next {queue.length} projected matches</div>
+        <div style={{ fontSize: 13, color: "var(--muted)" }}>
+          {suggested.length} suggested match{suggested.length === 1 ? "" : "es"} · {openCourts.length} open court
+          {openCourts.length === 1 ? "" : "s"}
+        </div>
         <button
           className="btn small"
+          disabled={regenerating}
           onClick={async () => {
-            await api.regenerateQueue(sessionId);
-            onChanged();
+            setRegenerating(true);
+            await api.regenerateSuggestions(sessionId);
+            await onChanged();
+            setRegenerating(false);
           }}
         >
-          Regenerate
+          {regenerating ? "Regenerating…" : "Regenerate"}
         </button>
       </div>
+
       <div className="stack">
-        {queue.map((m, i) => (
-          <div key={i} className="match-card">
-            <div className="court-label">Up #{i + 1}</div>
-            <div className="team-row">
-              <span>{m.team1.map((p) => playerById(p.id)?.name ?? "?").join(" & ")}</span>
-            </div>
-            <div className="team-row">
-              <span>{m.team2.map((p) => playerById(p.id)?.name ?? "?").join(" & ")}</span>
-            </div>
-          </div>
+        {suggested.map((m) => (
+          <SuggestionCard
+            key={m.id}
+            match={m}
+            openCourts={openCourts}
+            playerById={playerById}
+            sessionId={sessionId}
+            onChanged={onChanged}
+          />
         ))}
-        {queue.length === 0 && <div className="empty-state">Not enough active players to project a match.</div>}
+        {suggested.length === 0 && (
+          <div className="empty-state">
+            No suggested matches yet — press Regenerate to build some from the active roster.
+          </div>
+        )}
       </div>
+
+      <h3 style={{ fontSize: 15, color: "var(--muted)", marginTop: 28 }}>Build a custom match</h3>
+      <CustomMatchBuilder
+        players={players}
+        ongoing={ongoing}
+        openCourts={openCourts}
+        sessionId={sessionId}
+        onChanged={onChanged}
+      />
+    </div>
+  );
+}
+
+function SuggestionCard({
+  match,
+  openCourts,
+  playerById,
+  sessionId,
+  onChanged,
+}: {
+  match: Match;
+  openCourts: string[];
+  playerById: (id: number) => Player | undefined;
+  sessionId: number;
+  onChanged: () => void;
+}) {
+  const [court, setCourt] = useState(openCourts[0] ?? "");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!openCourts.includes(court)) setCourt(openCourts[0] ?? "");
+  }, [openCourts.join(",")]);
+
+  async function send() {
+    if (!court) return;
+    setSending(true);
+    setError("");
+    try {
+      await api.assignMatch(sessionId, match.id, court);
+      await onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not send this match");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="match-card">
+      <TeamLine ids={match.team1} playerById={playerById} />
+      <TeamLine ids={match.team2} playerById={playerById} />
+      {error && <div className="error-text" style={{ marginTop: 6 }}>{error}</div>}
+      <div className="row" style={{ marginTop: 10 }}>
+        <select value={court} onChange={(e) => setCourt(e.target.value)} disabled={openCourts.length === 0}>
+          {openCourts.length === 0 && <option value="">No open courts</option>}
+          {openCourts.map((label) => (
+            <option key={label} value={label}>
+              {label}
+            </option>
+          ))}
+        </select>
+        <button className="btn small primary" onClick={send} disabled={sending || !court}>
+          Send
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CustomMatchBuilder({
+  players,
+  ongoing,
+  openCourts,
+  sessionId,
+  onChanged,
+}: {
+  players: Player[];
+  ongoing: Match[];
+  openCourts: string[];
+  sessionId: number;
+  onChanged: () => void;
+}) {
+  const busy = new Set(ongoing.flatMap((m) => [...m.team1, ...m.team2]));
+  const eligible = players.filter((p) => p.approved && p.status === "active" && !busy.has(p.id));
+
+  const [team1a, setTeam1a] = useState<number | "">("");
+  const [team1b, setTeam1b] = useState<number | "">("");
+  const [team2a, setTeam2a] = useState<number | "">("");
+  const [team2b, setTeam2b] = useState<number | "">("");
+  const [court, setCourt] = useState(openCourts[0] ?? "");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const chosen = [team1a, team1b, team2a, team2b];
+
+  function optionsFor(current: number | "") {
+    return eligible.filter((p) => p.id === current || !chosen.includes(p.id));
+  }
+
+  function pillSelect(value: number | "", onChange: (v: number | "") => void, label: string) {
+    return (
+      <select value={value} onChange={(e) => onChange(e.target.value ? Number(e.target.value) : "")}>
+        <option value="">{label}</option>
+        {optionsFor(value).map((p) => (
+          <option key={p.id} value={p.id}>
+            {LEVEL_ICON[p.level]} {p.name}
+          </option>
+        ))}
+      </select>
+    );
+  }
+
+  async function createMatch() {
+    setError("");
+    if (team1a === "" || team1b === "" || team2a === "" || team2b === "" || !court) {
+      setError("Pick 4 different players and a court.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await api.createCustomMatch(sessionId, court, [team1a, team1b], [team2a, team2b]);
+      setTeam1a("");
+      setTeam1b("");
+      setTeam2a("");
+      setTeam2b("");
+      await onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not create this match");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="card">
+      <label>Team 1</label>
+      <div className="row">
+        {pillSelect(team1a, setTeam1a, "Player A")}
+        {pillSelect(team1b, setTeam1b, "Player B")}
+      </div>
+      <label style={{ marginTop: 12 }}>Team 2</label>
+      <div className="row">
+        {pillSelect(team2a, setTeam2a, "Player A")}
+        {pillSelect(team2b, setTeam2b, "Player B")}
+      </div>
+      <label style={{ marginTop: 12 }}>Court</label>
+      <div className="row">
+        <select value={court} onChange={(e) => setCourt(e.target.value)} disabled={openCourts.length === 0}>
+          {openCourts.length === 0 && <option value="">No open courts</option>}
+          {openCourts.map((label) => (
+            <option key={label} value={label}>
+              {label}
+            </option>
+          ))}
+        </select>
+        <button className="btn primary" onClick={createMatch} disabled={submitting || openCourts.length === 0}>
+          Create match
+        </button>
+      </div>
+      {error && <div className="error-text" style={{ marginTop: 8 }}>{error}</div>}
+      {eligible.length < 4 && (
+        <div className="empty-state" style={{ padding: "12px 0 0" }}>
+          Need at least 4 active, unassigned players to build a custom match.
+        </div>
+      )}
     </div>
   );
 }
@@ -400,7 +580,7 @@ function RankingTab({ players }: { players: Player[] }) {
           {sorted.map((p, i) => (
             <tr key={p.id}>
               <td>{i + 1}</td>
-              <td>{p.name} <span style={{ color: "var(--muted)" }}>{LEVEL_ICON[p.level]}</span></td>
+              <td>{p.name} <span style={{ color: "var(--muted)" }}>{LEVEL_ICON[p.level]} {p.level}</span></td>
               <td>{p.wins}-{p.losses}</td>
               <td>{p.gamesPlayed ? Math.round((p.wins / p.gamesPlayed) * 100) : 0}%</td>
               <td>{p.currentStreak > 0 ? `W${p.currentStreak}` : p.currentStreak < 0 ? `L${-p.currentStreak}` : "-"}</td>
@@ -443,6 +623,18 @@ function HistoryCard({
   const [editing, setEditing] = useState(false);
   const [score1, setScore1] = useState(String(match.score1 ?? 0));
   const [score2, setScore2] = useState(String(match.score2 ?? 0));
+  const [deleting, setDeleting] = useState(false);
+
+  async function remove() {
+    if (!confirm("Delete this match from history? Everyone's stats will be recalculated.")) return;
+    setDeleting(true);
+    try {
+      await api.deleteMatch(match.id);
+      onChanged();
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   return (
     <div className="match-card">
@@ -473,9 +665,14 @@ function HistoryCard({
           </button>
         </div>
       ) : (
-        <button className="btn small" style={{ marginTop: 10 }} onClick={() => setEditing(true)}>
-          Edit score
-        </button>
+        <div className="row" style={{ marginTop: 10 }}>
+          <button className="btn small" onClick={() => setEditing(true)}>
+            Edit score
+          </button>
+          <button className="btn small danger" onClick={remove} disabled={deleting}>
+            {deleting ? "Deleting…" : "Delete"}
+          </button>
+        </div>
       )}
     </div>
   );
