@@ -124,7 +124,9 @@ function PlayersTab({
   const sessionId = Number(id);
   const [name, setName] = useState("");
   const [level, setLevel] = useState<Level>("C");
-  const approved = players.filter((p) => p.approved);
+  const [search, setSearch] = useState("");
+  const approved = [...players.filter((p) => p.approved)].sort((a, b) => a.name.localeCompare(b.name));
+  const filteredApproved = approved.filter((p) => p.name.toLowerCase().includes(search.trim().toLowerCase()));
 
   async function addPlayer(e: React.FormEvent) {
     e.preventDefault();
@@ -190,8 +192,14 @@ function PlayersTab({
       </form>
 
       <h3 style={{ fontSize: 15, color: "var(--muted)", marginTop: 24 }}>Roster ({approved.length})</h3>
+      <input
+        placeholder="Search players…"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        style={{ marginBottom: 12 }}
+      />
       <div className="stack">
-        {approved.map((p) => (
+        {filteredApproved.map((p) => (
           <div key={p.id} className="card">
             <div className="row between">
               <div className="row">
@@ -243,6 +251,9 @@ function PlayersTab({
           </div>
         ))}
         {approved.length === 0 && <div className="empty-state">No players yet.</div>}
+        {approved.length > 0 && filteredApproved.length === 0 && (
+          <div className="empty-state">No players match "{search}".</div>
+        )}
       </div>
     </div>
   );
