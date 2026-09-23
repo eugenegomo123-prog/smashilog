@@ -594,7 +594,10 @@ function RankingTab({ players }: { players: Player[] }) {
                 return (
                   <tr key={p.id}>
                     <td>{i + 4}</td>
-                    <td>{p.name} <span style={{ color: "var(--muted)" }}>{LEVEL_ICON[p.level]}</span></td>
+                    <td>
+                      {p.name} {p.currentStreak >= 3 && <span title={`${p.currentStreak}-win streak`}>🔥</span>}{" "}
+                      <span style={{ color: "var(--muted)" }}>{LEVEL_ICON[p.level]}</span>
+                    </td>
                     <td>{p.wins}-{p.losses}</td>
                     <td>{p.gamesPlayed ? Math.round((p.wins / p.gamesPlayed) * 100) : 0}%</td>
                     <td style={{ color: avgDiff > 0 ? "var(--good)" : avgDiff < 0 ? "var(--bad)" : "var(--muted)" }}>
