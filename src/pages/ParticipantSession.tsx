@@ -5,6 +5,94 @@ import { playerKey } from "./ParticipantJoin";
 
 type Tab = "dashboard" | "ongoing" | "ranking" | "history";
 
+function timeAgo(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ${mins % 60}m ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+function rankCompare(a: Player, b: Player) {
+  if (b.wins !== a.wins) return b.wins - a.wins;
+  const wpA = a.gamesPlayed ? a.wins / a.gamesPlayed : 0;
+  const wpB = b.gamesPlayed ? b.wins / b.gamesPlayed : 0;
+  if (wpB !== wpA) return wpB - wpA;
+  if (a.losses !== b.losses) return a.losses - b.losses;
+  return a.name.localeCompare(b.name);
+}
+
+// Longest win streak any player actually reached during the session (not just
+// their final/current one), scanned from the completed-match history.
+function computeLongestStreaks(history: Match[]): Map<number, number> {
+  const sorted = [...history].sort(
+    (a, b) => new Date(a.endedAt ?? a.startedAt).getTime() - new Date(b.endedAt ?? b.startedAt).getTime(),
+  );
+  const running = new Map<number, number>();
+  const longest = new Map<number, number>();
+  for (const m of sorted) {
+    const team1Won = (m.score1 ?? 0) > (m.score2 ?? 0);
+    for (const pid of m.team1) {
+      const next = team1Won ? (running.get(pid) ?? 0) + 1 : 0;
+      running.set(pid, next);
+      longest.set(pid, Math.max(longest.get(pid) ?? 0, next));
+    }
+    for (const pid of m.team2) {
+      const next = !team1Won ? (running.get(pid) ?? 0) + 1 : 0;
+      running.set(pid, next);
+      longest.set(pid, Math.max(longest.get(pid) ?? 0, next));
+    }
+  }
+  return longest;
+}
+
+function buildAwards(players: Player[], history: Match[]) {
+  const withGames = players.filter((p) => p.gamesPlayed > 0);
+  if (withGames.length === 0) return null;
+  const mostGames = [...withGames].sort((a, b) => b.gamesPlayed - a.gamesPlayed)[0];
+  const bestDiff = [...withGames].sort(
+    (a, b) => (b.pointsFor - b.pointsAgainst) / b.gamesPlayed - (a.pointsFor - a.pointsAgainst) / a.gamesPlayed,
+  )[0];
+  const longestStreaks = computeLongestStreaks(history);
+  let streakPlayer: Player | null = null;
+  let streakValue = 0;
+  for (const p of withGames) {
+    const s = longestStreaks.get(p.id) ?? 0;
+    if (s > streakValue) {
+      streakValue = s;
+      streakPlayer = p;
+    }
+  }
+  return { mostGames, bestDiff, streakPlayer, streakValue };
+}
+
+function buildResultsText(session: Session, players: Player[]): string {
+  const sorted = [...players].sort(rankCompare);
+  const lines = sorted.map((p, i) => `${i + 1}. ${p.name} — ${p.wins}-${p.losses}`);
+  return `🏸 ${session.name} — Standings\n\n${lines.join("\n")}`;
+}
+
+async function shareResults(session: Session, players: Player[], onDone: (msg: string) => void) {
+  const text = buildResultsText(session, players);
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: `${session.name} results`, text });
+      return;
+    } catch {
+      // cancelled or unsupported -- fall through to clipboard
+    }
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    onDone("Copied results to clipboard!");
+  } catch {
+    onDone("Couldn't copy — try again.");
+  }
+}
+
 export default function ParticipantSession() {
   const { id } = useParams();
   const sessionId = Number(id);
@@ -80,9 +168,11 @@ export default function ParticipantSession() {
         <span className={`badge ${session.status === "active" ? "active" : "ended"}`}>{session.status}</span>
       </div>
 
-      {tab === "dashboard" && me && <DashboardTab player={me} onChanged={load} />}
+      {tab === "dashboard" && me && <DashboardTab player={me} players={players} onChanged={load} />}
       {tab === "ongoing" && <OngoingTab matches={matchData.ongoing} playerById={playerById} myId={myId} />}
-      {tab === "ranking" && <RankingTab players={players.filter((p) => p.approved)} />}
+      {tab === "ranking" && (
+        <RankingTab session={session} players={players.filter((p) => p.approved)} history={matchData.history} />
+      )}
       {tab === "history" && <HistoryTab history={matchData.history} playerById={playerById} />}
 
       <nav className="tabs">
@@ -95,8 +185,20 @@ export default function ParticipantSession() {
   );
 }
 
-function DashboardTab({ player, onChanged }: { player: Player; onChanged: () => void }) {
+function DashboardTab({
+  player,
+  players,
+  onChanged,
+}: {
+  player: Player;
+  players: Player[];
+  onChanged: () => void;
+}) {
   const winPct = player.gamesPlayed ? Math.round((player.wins / player.gamesPlayed) * 100) : 0;
+  const others = players
+    .filter((p) => p.approved && p.id !== player.id)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
   return (
     <div className="stack">
       <div className="card">
@@ -140,6 +242,24 @@ function DashboardTab({ player, onChanged }: { player: Player; onChanged: () => 
           <option value="inactive">Inactive</option>
         </select>
       </div>
+      <div className="card">
+        <label>Preferred partner</label>
+        <select
+          value={player.preferredPartnerId ?? ""}
+          onChange={async (e) => {
+            const v = e.target.value ? Number(e.target.value) : null;
+            await api.updatePlayer(player.id, { preferredPartnerId: v });
+            onChanged();
+          }}
+        >
+          <option value="">No preference</option>
+          {others.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      </div>
     </div>
   );
 }
@@ -159,7 +279,9 @@ function OngoingTab({
         const mine = [...m.team1, ...m.team2].includes(myId ?? -1);
         return (
           <div key={m.id} className="match-card" style={mine ? { borderColor: "var(--accent)" } : undefined}>
-            <div className="court-label">{m.courtLabel}</div>
+            <div className="court-label">
+              {m.courtLabel} · started {timeAgo(m.startedAt)}
+            </div>
             <div className="team-row">
               <span>{m.team1.map((id) => playerById(id)?.name ?? "?").join(" & ")}</span>
             </div>
@@ -174,22 +296,31 @@ function OngoingTab({
   );
 }
 
-function rankCompare(a: Player, b: Player) {
-  if (b.wins !== a.wins) return b.wins - a.wins;
-  const wpA = a.gamesPlayed ? a.wins / a.gamesPlayed : 0;
-  const wpB = b.gamesPlayed ? b.wins / b.gamesPlayed : 0;
-  if (wpB !== wpA) return wpB - wpA;
-  if (a.losses !== b.losses) return a.losses - b.losses;
-  return a.name.localeCompare(b.name);
-}
-
-function RankingTab({ players }: { players: Player[] }) {
+function RankingTab({ session, players, history }: { session: Session; players: Player[]; history: Match[] }) {
   const sorted = [...players].sort(rankCompare);
   const top3 = sorted.slice(0, 3);
   const rest = sorted.slice(3);
+  const awards = session.status === "ended" ? buildAwards(players, history) : null;
+  const [shareMsg, setShareMsg] = useState("");
+
+  function handleShare() {
+    shareResults(session, players, (msg) => {
+      setShareMsg(msg);
+      setTimeout(() => setShareMsg(""), 3000);
+    });
+  }
 
   return (
     <div>
+      <div className="row between" style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 13, color: "var(--muted)" }}>{shareMsg || " "}</div>
+        <button className="btn small" onClick={handleShare} disabled={sorted.length === 0}>
+          Share results
+        </button>
+      </div>
+
+      {awards && <AwardsPanel awards={awards} />}
+
       {top3.length > 0 && <Podium top3={top3} />}
       {rest.length > 0 && (
         <div className="table-wrap">
@@ -227,6 +358,31 @@ function RankingTab({ players }: { players: Player[] }) {
         </div>
       )}
       {sorted.length === 0 && <div className="empty-state">No ranked players yet.</div>}
+    </div>
+  );
+}
+
+function AwardsPanel({ awards }: { awards: NonNullable<ReturnType<typeof buildAwards>> }) {
+  const diffVal = (awards.bestDiff.pointsFor - awards.bestDiff.pointsAgainst) / awards.bestDiff.gamesPlayed;
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <h3 style={{ fontSize: 15, color: "var(--accent-2)", marginTop: 0 }}>🏆 Session awards</h3>
+      <div className="stack">
+        <div className="row between">
+          <span>🎽 Most games played</span>
+          <strong>{awards.mostGames.name} ({awards.mostGames.gamesPlayed})</strong>
+        </div>
+        <div className="row between">
+          <span>📈 Best point diff</span>
+          <strong>{awards.bestDiff.name} ({diffVal > 0 ? "+" : ""}{diffVal.toFixed(1)})</strong>
+        </div>
+        {awards.streakPlayer && awards.streakValue >= 2 && (
+          <div className="row between">
+            <span>🔥 Longest win streak</span>
+            <strong>{awards.streakPlayer.name} ({awards.streakValue})</strong>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
