@@ -34,6 +34,10 @@ export const players = pgTable("players", {
   currentStreak: integer("current_streak").notNull().default(0),
   gamesPlayed: integer("games_played").notNull().default(0),
   lastMatchEndedAt: timestamp("last_match_ended_at"),
+  // Another player's id, same session. Self-service (a participant sets their own).
+  // No DB foreign key, to keep a self-referencing column simple -- validated in the
+  // API layer instead (must be an approved player in the same session).
+  preferredPartnerId: integer("preferred_partner_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -43,7 +47,7 @@ export const matches = pgTable("matches", {
   courtLabel: text("court_label").notNull(),
   team1: jsonb("team1").notNull(), // [playerId, playerId]
   team2: jsonb("team2").notNull(),
-  status: text().notNull().default("ongoing"), // ongoing | completed
+  status: text().notNull().default("ongoing"), // ongoing | completed | suggested
   score1: integer("score1"),
   score2: integer("score2"),
   startedAt: timestamp("started_at").defaultNow().notNull(),
