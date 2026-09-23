@@ -4,6 +4,94 @@ import { api, LEVELS, LEVEL_ICON, LEVEL_LABEL, type Session, type Player, type M
 
 type Tab = "players" | "courts" | "queue" | "ranking" | "history" | "settings";
 
+function timeAgo(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ${mins % 60}m ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+function rankCompare(a: Player, b: Player) {
+  if (b.wins !== a.wins) return b.wins - a.wins;
+  const wpA = a.gamesPlayed ? a.wins / a.gamesPlayed : 0;
+  const wpB = b.gamesPlayed ? b.wins / b.gamesPlayed : 0;
+  if (wpB !== wpA) return wpB - wpA;
+  if (a.losses !== b.losses) return a.losses - b.losses;
+  return a.name.localeCompare(b.name);
+}
+
+// Longest win streak any player actually reached during the session (not just
+// their final/current one), scanned from the completed-match history.
+function computeLongestStreaks(history: Match[]): Map<number, number> {
+  const sorted = [...history].sort(
+    (a, b) => new Date(a.endedAt ?? a.startedAt).getTime() - new Date(b.endedAt ?? b.startedAt).getTime(),
+  );
+  const running = new Map<number, number>();
+  const longest = new Map<number, number>();
+  for (const m of sorted) {
+    const team1Won = (m.score1 ?? 0) > (m.score2 ?? 0);
+    for (const pid of m.team1) {
+      const next = team1Won ? (running.get(pid) ?? 0) + 1 : 0;
+      running.set(pid, next);
+      longest.set(pid, Math.max(longest.get(pid) ?? 0, next));
+    }
+    for (const pid of m.team2) {
+      const next = !team1Won ? (running.get(pid) ?? 0) + 1 : 0;
+      running.set(pid, next);
+      longest.set(pid, Math.max(longest.get(pid) ?? 0, next));
+    }
+  }
+  return longest;
+}
+
+function buildAwards(players: Player[], history: Match[]) {
+  const withGames = players.filter((p) => p.gamesPlayed > 0);
+  if (withGames.length === 0) return null;
+  const mostGames = [...withGames].sort((a, b) => b.gamesPlayed - a.gamesPlayed)[0];
+  const bestDiff = [...withGames].sort(
+    (a, b) => (b.pointsFor - b.pointsAgainst) / b.gamesPlayed - (a.pointsFor - a.pointsAgainst) / a.gamesPlayed,
+  )[0];
+  const longestStreaks = computeLongestStreaks(history);
+  let streakPlayer: Player | null = null;
+  let streakValue = 0;
+  for (const p of withGames) {
+    const s = longestStreaks.get(p.id) ?? 0;
+    if (s > streakValue) {
+      streakValue = s;
+      streakPlayer = p;
+    }
+  }
+  return { mostGames, bestDiff, streakPlayer, streakValue };
+}
+
+function buildResultsText(session: Session, players: Player[]): string {
+  const sorted = [...players].sort(rankCompare);
+  const lines = sorted.map((p, i) => `${i + 1}. ${p.name} — ${p.wins}-${p.losses}`);
+  return `🏸 ${session.name} — Standings\n\n${lines.join("\n")}`;
+}
+
+async function shareResults(session: Session, players: Player[], onDone: (msg: string) => void) {
+  const text = buildResultsText(session, players);
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: `${session.name} results`, text });
+      return;
+    } catch {
+      // cancelled or unsupported -- fall through to clipboard
+    }
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    onDone("Copied results to clipboard!");
+  } catch {
+    onDone("Couldn't copy — try again.");
+  }
+}
+
 export default function HostSession() {
   const { id } = useParams();
   const sessionId = Number(id);
@@ -85,7 +173,9 @@ export default function HostSession() {
           onChanged={load}
         />
       )}
-      {tab === "ranking" && <RankingTab players={players.filter((p) => p.approved)} />}
+      {tab === "ranking" && (
+        <RankingTab session={session} players={players.filter((p) => p.approved)} history={matchData.history} />
+      )}
       {tab === "history" && <HistoryTab history={matchData.history} playerById={playerById} onChanged={load} />}
       {tab === "settings" && <SettingsTab session={session} onChanged={load} />}
 
@@ -209,6 +299,11 @@ function PlayersTab({
                   <div style={{ fontSize: 12, color: "var(--muted)" }}>
                     {LEVEL_LABEL[p.level]} · {p.wins}W-{p.losses}L · {p.gamesPlayed} games
                   </div>
+                  <div style={{ fontSize: 11, color: "var(--muted)" }}>
+                    {p.lastMatchEndedAt ? `Last played ${timeAgo(p.lastMatchEndedAt)}` : "Hasn't played yet"}
+                    {p.preferredPartnerId &&
+                      ` · wants ${players.find((x) => x.id === p.preferredPartnerId)?.name ?? "a partner"}`}
+                  </div>
                 </div>
               </div>
               <span className={`badge ${p.status}`}>{p.status}</span>
@@ -309,6 +404,9 @@ function ScoreCard({
 
   async function submit() {
     if (score1 === "" || score2 === "") return;
+    if (Number(score1) === Number(score2)) {
+      if (!confirm("Scores are tied — is that right? Badminton games don't usually end in a tie.")) return;
+    }
     setSubmitting(true);
     try {
       await api.submitScore(match.id, Number(score1), Number(score2));
@@ -331,7 +429,9 @@ function ScoreCard({
 
   return (
     <div className="match-card">
-      <div className="court-label">{match.courtLabel}</div>
+      <div className="court-label">
+        {match.courtLabel} · started {timeAgo(match.startedAt)}
+      </div>
       <TeamLine ids={match.team1} playerById={playerById} />
       <TeamLine ids={match.team2} playerById={playerById} />
       <div className="row" style={{ marginTop: 10 }}>
@@ -356,6 +456,33 @@ function TeamLine({ ids, playerById }: { ids: number[]; playerById: (id: number)
   );
 }
 
+function eligiblePoolFor(players: Player[], ongoing: Match[]): Player[] {
+  const busy = new Set(ongoing.flatMap((m) => [...m.team1, ...m.team2]));
+  return players.filter((p) => p.approved && p.status === "active" && !busy.has(p.id));
+}
+
+function isStale(match: Match, pool: Player[]): boolean {
+  const ids = [...match.team1, ...match.team2];
+  return ids.some((id) => !pool.some((p) => p.id === id));
+}
+
+function suggestionReason(match: Match, pool: Player[]): string {
+  const ids = [...match.team1, ...match.team2];
+  const involved = pool.filter((p) => ids.includes(p.id));
+  if (involved.length === 0) return "Balanced pick from the active pool";
+  const minGames = Math.min(...pool.map((p) => p.gamesPlayed));
+  if (involved.some((p) => p.gamesPlayed === minGames)) return "Includes a least-played player";
+  if (involved.some((p) => !p.lastMatchEndedAt)) return "Includes a player who hasn't played yet";
+  const rested = pool.filter((p) => p.lastMatchEndedAt);
+  if (rested.length > 0) {
+    const oldest = Math.min(...rested.map((p) => new Date(p.lastMatchEndedAt as string).getTime()));
+    if (involved.some((p) => p.lastMatchEndedAt && new Date(p.lastMatchEndedAt).getTime() === oldest)) {
+      return "Includes the most-rested player";
+    }
+  }
+  return "Balanced pick from the active pool";
+}
+
 function QueueTab({
   session,
   suggested,
@@ -375,6 +502,8 @@ function QueueTab({
 }) {
   const [regenerating, setRegenerating] = useState(false);
   const openCourts = session.courtLabels.filter((label) => !ongoing.some((m) => m.courtLabel === label));
+  const pool = eligiblePoolFor(players, ongoing);
+  const anyStale = suggested.some((m) => isStale(m, pool));
 
   return (
     <div>
@@ -397,11 +526,18 @@ function QueueTab({
         </button>
       </div>
 
+      {anyStale && (
+        <div className="error-text" style={{ marginBottom: 12 }}>
+          Some suggested matches include players who are no longer available — Regenerate to refresh.
+        </div>
+      )}
+
       <div className="stack">
         {suggested.map((m) => (
           <SuggestionCard
             key={m.id}
             match={m}
+            pool={pool}
             openCourts={openCourts}
             playerById={playerById}
             sessionId={sessionId}
@@ -429,12 +565,14 @@ function QueueTab({
 
 function SuggestionCard({
   match,
+  pool,
   openCourts,
   playerById,
   sessionId,
   onChanged,
 }: {
   match: Match;
+  pool: Player[];
   openCourts: string[];
   playerById: (id: number) => Player | undefined;
   sessionId: number;
@@ -443,6 +581,8 @@ function SuggestionCard({
   const [court, setCourt] = useState(openCourts[0] ?? "");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const stale = isStale(match, pool);
+  const reason = stale ? null : suggestionReason(match, pool);
 
   useEffect(() => {
     if (!openCourts.includes(court)) setCourt(openCourts[0] ?? "");
@@ -466,6 +606,9 @@ function SuggestionCard({
     <div className="match-card">
       <TeamLine ids={match.team1} playerById={playerById} />
       <TeamLine ids={match.team2} playerById={playerById} />
+      <div style={{ fontSize: 12, color: stale ? "var(--bad)" : "var(--muted)", marginTop: 4 }}>
+        {stale ? "⚠️ Includes a player who's no longer available" : reason}
+      </div>
       {error && <div className="error-text" style={{ marginTop: 6 }}>{error}</div>}
       <div className="row" style={{ marginTop: 10 }}>
         <select value={court} onChange={(e) => setCourt(e.target.value)} disabled={openCourts.length === 0}>
@@ -586,22 +729,31 @@ function CustomMatchBuilder({
   );
 }
 
-function rankCompare(a: Player, b: Player) {
-  if (b.wins !== a.wins) return b.wins - a.wins;
-  const wpA = a.gamesPlayed ? a.wins / a.gamesPlayed : 0;
-  const wpB = b.gamesPlayed ? b.wins / b.gamesPlayed : 0;
-  if (wpB !== wpA) return wpB - wpA;
-  if (a.losses !== b.losses) return a.losses - b.losses;
-  return a.name.localeCompare(b.name);
-}
-
-function RankingTab({ players }: { players: Player[] }) {
+function RankingTab({ session, players, history }: { session: Session; players: Player[]; history: Match[] }) {
   const sorted = [...players].sort(rankCompare);
   const top3 = sorted.slice(0, 3);
   const rest = sorted.slice(3);
+  const awards = session.status === "ended" ? buildAwards(players, history) : null;
+  const [shareMsg, setShareMsg] = useState("");
+
+  function handleShare() {
+    shareResults(session, players, (msg) => {
+      setShareMsg(msg);
+      setTimeout(() => setShareMsg(""), 3000);
+    });
+  }
 
   return (
     <div>
+      <div className="row between" style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 13, color: "var(--muted)" }}>{shareMsg || " "}</div>
+        <button className="btn small" onClick={handleShare} disabled={sorted.length === 0}>
+          Share results
+        </button>
+      </div>
+
+      {awards && <AwardsPanel awards={awards} />}
+
       {top3.length > 0 && <Podium top3={top3} />}
       {rest.length > 0 && (
         <div className="table-wrap">
@@ -639,6 +791,31 @@ function RankingTab({ players }: { players: Player[] }) {
         </div>
       )}
       {sorted.length === 0 && <div className="empty-state">No ranked players yet.</div>}
+    </div>
+  );
+}
+
+function AwardsPanel({ awards }: { awards: NonNullable<ReturnType<typeof buildAwards>> }) {
+  const diffVal = (awards.bestDiff.pointsFor - awards.bestDiff.pointsAgainst) / awards.bestDiff.gamesPlayed;
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <h3 style={{ fontSize: 15, color: "var(--accent-2)", marginTop: 0 }}>🏆 Session awards</h3>
+      <div className="stack">
+        <div className="row between">
+          <span>🎽 Most games played</span>
+          <strong>{awards.mostGames.name} ({awards.mostGames.gamesPlayed})</strong>
+        </div>
+        <div className="row between">
+          <span>📈 Best point diff</span>
+          <strong>{awards.bestDiff.name} ({diffVal > 0 ? "+" : ""}{diffVal.toFixed(1)})</strong>
+        </div>
+        {awards.streakPlayer && awards.streakValue >= 2 && (
+          <div className="row between">
+            <span>🔥 Longest win streak</span>
+            <strong>{awards.streakPlayer.name} ({awards.streakValue})</strong>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -704,6 +881,15 @@ function HistoryCard({
   const [score2, setScore2] = useState(String(match.score2 ?? 0));
   const [deleting, setDeleting] = useState(false);
 
+  async function save() {
+    if (Number(score1) === Number(score2)) {
+      if (!confirm("Scores are tied — is that right? Badminton games don't usually end in a tie.")) return;
+    }
+    await api.submitScore(match.id, Number(score1), Number(score2));
+    setEditing(false);
+    onChanged();
+  }
+
   async function remove() {
     if (!confirm("Delete this match from history? Everyone's stats will be recalculated.")) return;
     setDeleting(true);
@@ -732,14 +918,7 @@ function HistoryCard({
         <div className="row" style={{ marginTop: 10 }}>
           <input value={score1} onChange={(e) => setScore1(e.target.value)} inputMode="numeric" />
           <input value={score2} onChange={(e) => setScore2(e.target.value)} inputMode="numeric" />
-          <button
-            className="btn small primary"
-            onClick={async () => {
-              await api.submitScore(match.id, Number(score1), Number(score2));
-              setEditing(false);
-              onChanged();
-            }}
-          >
+          <button className="btn small primary" onClick={save}>
             Save
           </button>
         </div>
@@ -760,9 +939,37 @@ function HistoryCard({
 function SettingsTab({ session, onChanged }: { session: Session; onChanged: () => void }) {
   const navigate = useNavigate();
   const [courtCount, setCourtCount] = useState(session.courtCount);
+  const [copied, setCopied] = useState(false);
+  const joinUrl = `${window.location.origin}/join/${session.id}`;
+  const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(joinUrl)}`;
+
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText(joinUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // ignore
+    }
+  }
 
   return (
     <div className="stack">
+      <div className="card" style={{ textAlign: "center" }}>
+        <label style={{ textAlign: "left" }}>Join link</label>
+        <img
+          src={qrSrc}
+          alt="QR code to join this session"
+          width={180}
+          height={180}
+          style={{ borderRadius: 12, margin: "8px auto", display: "block" }}
+        />
+        <div style={{ fontSize: 13, color: "var(--muted)", wordBreak: "break-all", marginBottom: 10 }}>{joinUrl}</div>
+        <button className="btn small" onClick={copyLink}>
+          {copied ? "Copied!" : "Copy link"}
+        </button>
+      </div>
+
       <div className="card">
         <label>Number of courts</label>
         <div className="row">
