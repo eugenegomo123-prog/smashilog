@@ -351,8 +351,8 @@ app.delete("/api/matches/:id", async (c) => {
   const db = getDb(c.env.DATABASE_URL);
   const [match] = await db.select().from(matches).where(eq(matches.id, id));
   if (!match) return c.text("Not found", 404);
-  if (match.status !== "completed") {
-    return c.json({ error: "Only completed matches can be deleted from history" }, 400);
+  if (match.status === "suggested") {
+    return c.json({ error: "Suggested matches aren't deleted this way -- try regenerating." }, 400);
   }
   await db.delete(matches).where(eq(matches.id, id));
   await recomputeSessionStats(db, match.sessionId);
