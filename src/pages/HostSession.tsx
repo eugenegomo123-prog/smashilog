@@ -498,7 +498,9 @@ function CustomMatchBuilder({
   onChanged: () => void;
 }) {
   const busy = new Set(ongoing.flatMap((m) => [...m.team1, ...m.team2]));
-  const eligible = players.filter((p) => p.approved && p.status === "active" && !busy.has(p.id));
+  const eligible = players
+    .filter((p) => p.approved && p.status === "active" && !busy.has(p.id))
+    .sort((a, b) => LEVELS.indexOf(a.level) - LEVELS.indexOf(b.level) || a.name.localeCompare(b.name));
 
   const [team1a, setTeam1a] = useState<number | "">("");
   const [team1b, setTeam1b] = useState<number | "">("");
