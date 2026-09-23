@@ -522,7 +522,7 @@ function CustomMatchBuilder({
         <option value="">{label}</option>
         {optionsFor(value).map((p) => (
           <option key={p.id} value={p.id}>
-            {LEVEL_ICON[p.level]} {p.name}
+            {LEVEL_ICON[p.level]} {p.name} · {p.gamesPlayed}g
           </option>
         ))}
       </select>
