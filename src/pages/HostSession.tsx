@@ -584,19 +584,24 @@ function RankingTab({ players }: { players: Player[] }) {
                 <th>Player</th>
                 <th>W-L</th>
                 <th>Win%</th>
-                <th>Streak</th>
+                <th>Diff</th>
               </tr>
             </thead>
             <tbody>
-              {rest.map((p, i) => (
-                <tr key={p.id}>
-                  <td>{i + 4}</td>
-                  <td>{p.name} <span style={{ color: "var(--muted)" }}>{LEVEL_ICON[p.level]}</span></td>
-                  <td>{p.wins}-{p.losses}</td>
-                  <td>{p.gamesPlayed ? Math.round((p.wins / p.gamesPlayed) * 100) : 0}%</td>
-                  <td>{p.currentStreak > 0 ? `W${p.currentStreak}` : p.currentStreak < 0 ? `L${-p.currentStreak}` : "-"}</td>
-                </tr>
-              ))}
+              {rest.map((p, i) => {
+                const diff = p.pointsFor - p.pointsAgainst;
+                return (
+                  <tr key={p.id}>
+                    <td>{i + 4}</td>
+                    <td>{p.name} <span style={{ color: "var(--muted)" }}>{LEVEL_ICON[p.level]}</span></td>
+                    <td>{p.wins}-{p.losses}</td>
+                    <td>{p.gamesPlayed ? Math.round((p.wins / p.gamesPlayed) * 100) : 0}%</td>
+                    <td style={{ color: diff > 0 ? "var(--good)" : diff < 0 ? "var(--bad)" : "var(--muted)" }}>
+                      {diff > 0 ? `+${diff}` : diff}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
