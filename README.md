@@ -1,26 +1,32 @@
 # Smashilog
 
-Smashilog is a mobile-first web app for running a badminton doubles session courtside: it manages a rotating
-queue of players, builds balanced 2v2 matches, and tracks live standings and match history for the whole group.
+Smashilog is a mobile-first web app for running a badminton doubles session courtside: it suggests balanced
+2v2 matches from the players waiting, lets the host send them out to courts, and tracks live standings and
+match history for the whole group.
 
 ## How it works
 
-- **Host** creates a session (sets the number of courts), approves players who ask to join, and enters final
-  scores as matches finish.
+- **Host** creates a session (sets the number of courts), approves players who ask to join, regenerates a
+  batch of suggested matchups at any time, sends a suggestion (or a custom match they build themselves) to
+  whichever court is open, enters final scores as matches finish, and can delete a match from history if
+  needed (stats are recalculated automatically).
 - **Participants** join an active session by picking their name from the approved roster or submitting a
-  join request, then track their own dashboard, the courts in play, the upcoming queue, the ranking table, and
-  match history — all from their phone.
-- The matchmaking engine pulls the players who've played the fewest games (and waited longest) into each open
-  court, then picks whichever of the three possible 2-vs-2 splits keeps the two teams' combined skill closest.
+  join request, then track their own dashboard, the courts currently in play, the ranking table, and match
+  history — all from their phone. They're notified the moment the host sends them out to a court.
+- The matchmaking engine builds up to 8 suggested matchups from the players who are currently active and not
+  already on a court, favoring whoever's played the fewest games (and waited longest), balancing each match's
+  combined skill level, and trying to avoid repeating someone's last partner or sending them out twice in a
+  row — best-effort, and automatically relaxed when the active player pool is too small to allow it. Nothing
+  is sent to a court automatically: the host always picks which suggestion (or custom pairing) goes where.
 
 ## Tech stack
 
 - **Frontend**: React + Vite, plain CSS, client-side routing with `react-router-dom`. The UI polls the API
   every few seconds so every device stays roughly in sync without a dedicated realtime backend.
 - **Backend**: a single Cloudflare Worker (`worker/index.ts`), routed with [Hono](https://hono.dev) — one route
-  per resource (sessions, players, matches, queue regeneration, host login). All writes and the matchmaking
-  logic run server-side; the client never decides who plays whom. The same Worker also serves the built frontend
-  via Cloudflare's Static Assets, so the whole app is one deployment.
+  per resource (sessions, players, matches, suggestion regeneration, match assignment, host login). All writes
+  and the matchmaking logic run server-side; the client never decides who plays whom. The same Worker also
+  serves the built frontend via Cloudflare's Static Assets, so the whole app is one deployment.
 - **Data**: Postgres, via [Neon](https://neon.tech)'s HTTP driver (`@neondatabase/serverless` +
   `drizzle-orm/neon-http`) — this is the edge-friendly way to talk to Postgres from a Worker, since Workers
   don't support the raw TCP connections a normal `pg` client needs. Schema lives in `db/schema.ts`; migrations
