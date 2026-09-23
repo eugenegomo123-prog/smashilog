@@ -205,15 +205,16 @@ function RankingTab({ players }: { players: Player[] }) {
             </thead>
             <tbody>
               {rest.map((p, i) => {
-                const diff = p.pointsFor - p.pointsAgainst;
+                const avgDiff = p.gamesPlayed ? (p.pointsFor - p.pointsAgainst) / p.gamesPlayed : 0;
+                const avgDiffLabel = avgDiff.toFixed(1);
                 return (
                   <tr key={p.id}>
                     <td>{i + 4}</td>
                     <td>{p.name} <span style={{ color: "var(--muted)" }}>{LEVEL_ICON[p.level]}</span></td>
                     <td>{p.wins}-{p.losses}</td>
                     <td>{p.gamesPlayed ? Math.round((p.wins / p.gamesPlayed) * 100) : 0}%</td>
-                    <td style={{ color: diff > 0 ? "var(--good)" : diff < 0 ? "var(--bad)" : "var(--muted)" }}>
-                      {diff > 0 ? `+${diff}` : diff}
+                    <td style={{ color: avgDiff > 0 ? "var(--good)" : avgDiff < 0 ? "var(--bad)" : "var(--muted)" }}>
+                      {avgDiff > 0 ? `+${avgDiffLabel}` : avgDiffLabel}
                     </td>
                   </tr>
                 );
