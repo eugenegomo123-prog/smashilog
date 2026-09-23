@@ -26,6 +26,7 @@ export interface Player {
   currentStreak: number;
   gamesPlayed: number;
   lastMatchEndedAt: string | null;
+  preferredPartnerId: number | null;
   createdAt: string;
 }
 
@@ -88,7 +89,7 @@ export const api = {
     }),
   updatePlayer: (
     id: number,
-    updates: Partial<Pick<Player, "level" | "status" | "approved" | "name">>,
+    updates: Partial<Pick<Player, "level" | "status" | "approved" | "name" | "preferredPartnerId">>,
   ) => request<Player>(`/players/${id}`, { method: "PATCH", body: JSON.stringify(updates) }),
   removePlayer: (id: number) => request<{ ok: true }>(`/players/${id}`, { method: "DELETE" }),
 
@@ -124,7 +125,7 @@ export const LEVEL_ICON: Record<Level, string> = {
 
 export const LEVEL_LABEL: Record<Level, string> = {
   E: "Egg",
-  D: "Hatching",
+  D: "Hatchling",
   C: "Chick",
   B: "Chicken",
   A: "Roast",
