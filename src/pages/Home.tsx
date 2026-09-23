@@ -9,7 +9,7 @@ export default function Home() {
           Smashilog<span className="dot">.</span>
         </h1>
       </div>
-      <p className="subtitle">Badminton doubles session manager</p>
+      <p className="subtitle">Tara, Smash!</p>
       <div className="stack" style={{ marginTop: 40 }}>
         <button className="big-btn primary" onClick={() => navigate("/host")}>
           🏸 Host a Session
