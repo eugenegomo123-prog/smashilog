@@ -15,6 +15,7 @@ function toMatchmakingPlayer(p: typeof players.$inferSelect): PlayerForMatchmaki
     pointsAgainst: p.pointsAgainst,
     gamesPlayed: p.gamesPlayed,
     lastMatchEndedAt: p.lastMatchEndedAt ? (p.lastMatchEndedAt as unknown as Date).toISOString() : null,
+    preferredPartnerId: p.preferredPartnerId ?? null,
   };
 }
 
