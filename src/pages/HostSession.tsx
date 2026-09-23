@@ -558,36 +558,76 @@ function CustomMatchBuilder({
   );
 }
 
+function rankCompare(a: Player, b: Player) {
+  if (b.wins !== a.wins) return b.wins - a.wins;
+  const wpA = a.gamesPlayed ? a.wins / a.gamesPlayed : 0;
+  const wpB = b.gamesPlayed ? b.wins / b.gamesPlayed : 0;
+  if (wpB !== wpA) return wpB - wpA;
+  if (a.losses !== b.losses) return a.losses - b.losses;
+  return a.name.localeCompare(b.name);
+}
+
 function RankingTab({ players }: { players: Player[] }) {
-  const sorted = [...players].sort((a, b) => {
-    const wpA = a.gamesPlayed ? a.wins / a.gamesPlayed : 0;
-    const wpB = b.gamesPlayed ? b.wins / b.gamesPlayed : 0;
-    return wpB - wpA;
-  });
+  const sorted = [...players].sort(rankCompare);
+  const top3 = sorted.slice(0, 3);
+  const rest = sorted.slice(3);
+
   return (
-    <div className="table-wrap">
-      <table className="ranking">
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Player</th>
-            <th>W-L</th>
-            <th>Win%</th>
-            <th>Streak</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map((p, i) => (
-            <tr key={p.id}>
-              <td>{i + 1}</td>
-              <td>{p.name} <span style={{ color: "var(--muted)" }}>{LEVEL_ICON[p.level]} {p.level}</span></td>
-              <td>{p.wins}-{p.losses}</td>
-              <td>{p.gamesPlayed ? Math.round((p.wins / p.gamesPlayed) * 100) : 0}%</td>
-              <td>{p.currentStreak > 0 ? `W${p.currentStreak}` : p.currentStreak < 0 ? `L${-p.currentStreak}` : "-"}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div>
+      {top3.length > 0 && <Podium top3={top3} />}
+      {rest.length > 0 && (
+        <div className="table-wrap">
+          <table className="ranking">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Player</th>
+                <th>W-L</th>
+                <th>Win%</th>
+                <th>Streak</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rest.map((p, i) => (
+                <tr key={p.id}>
+                  <td>{i + 4}</td>
+                  <td>{p.name} <span style={{ color: "var(--muted)" }}>{LEVEL_ICON[p.level]}</span></td>
+                  <td>{p.wins}-{p.losses}</td>
+                  <td>{p.gamesPlayed ? Math.round((p.wins / p.gamesPlayed) * 100) : 0}%</td>
+                  <td>{p.currentStreak > 0 ? `W${p.currentStreak}` : p.currentStreak < 0 ? `L${-p.currentStreak}` : "-"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {sorted.length === 0 && <div className="empty-state">No ranked players yet.</div>}
+    </div>
+  );
+}
+
+function Podium({ top3 }: { top3: Player[] }) {
+  const [first, second, third] = top3;
+  return (
+    <div className="podium">
+      <PodiumPlace place={2} player={second} />
+      <PodiumPlace place={1} player={first} />
+      <PodiumPlace place={3} player={third} />
+    </div>
+  );
+}
+
+function PodiumPlace({ place, player }: { place: 1 | 2 | 3; player?: Player }) {
+  if (!player) return <div className="podium-place" />;
+  const rankClass = place === 1 ? "gold" : place === 2 ? "silver" : "bronze";
+  const winPct = player.gamesPlayed ? Math.round((player.wins / player.gamesPlayed) * 100) : 0;
+  return (
+    <div className={`podium-place ${rankClass}`}>
+      {place === 1 && <div className="podium-crown">👑</div>}
+      <div className="podium-avatar">{LEVEL_ICON[player.level]}</div>
+      <div className="podium-name">{player.name}</div>
+      <div className="podium-record">{player.wins}-{player.losses} · {winPct}%</div>
+      <div className="podium-stand">{place}</div>
     </div>
   );
 }
