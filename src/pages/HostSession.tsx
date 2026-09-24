@@ -92,6 +92,52 @@ async function shareResults(session: Session, players: Player[], onDone: (msg: s
   }
 }
 
+// Players eligible to appear in a new suggestion or custom match: approved, active,
+// and not already on a court or already sitting in the actual queue.
+function eligiblePoolFor(players: Player[], ongoing: Match[], queued: Match[]): Player[] {
+  const busy = new Set([...ongoing, ...queued].flatMap((m) => [...m.team1, ...m.team2]));
+  return players.filter((p) => p.approved && p.status === "active" && !busy.has(p.id));
+}
+
+function isStale(match: Match, pool: Player[]): boolean {
+  const ids = [...match.team1, ...match.team2];
+  return ids.some((id) => !pool.some((p) => p.id === id));
+}
+
+function suggestionReason(match: Match, pool: Player[]): string {
+  const ids = [...match.team1, ...match.team2];
+  const involved = pool.filter((p) => ids.includes(p.id));
+  if (involved.length === 0) return "Balanced pick from the active pool";
+  const minGames = Math.min(...pool.map((p) => p.gamesPlayed));
+  if (involved.some((p) => p.gamesPlayed === minGames)) return "Includes a least-played player";
+  if (involved.some((p) => !p.lastMatchEndedAt)) return "Includes a player who hasn't played yet";
+  const rested = pool.filter((p) => p.lastMatchEndedAt);
+  if (rested.length > 0) {
+    const oldest = Math.min(...rested.map((p) => new Date(p.lastMatchEndedAt as string).getTime()));
+    if (involved.some((p) => p.lastMatchEndedAt && new Date(p.lastMatchEndedAt).getTime() === oldest)) {
+      return "Includes the most-rested player";
+    }
+  }
+  return "Balanced pick from the active pool";
+}
+
+// Players who were in the single most-recently-completed match (history is already
+// sorted newest-first by the API).
+function justPlayedIds(history: Match[]): Set<number> {
+  if (history.length === 0) return new Set();
+  const mostRecent = history[0];
+  return new Set([...mostRecent.team1, ...mostRecent.team2]);
+}
+
+// Players who've played noticeably fewer games than the busiest player currently in
+// the pool -- a stand-in for "has been sitting out a while," since the app doesn't
+// track discrete rounds/rotations directly.
+function restingLongIds(pool: Player[]): Set<number> {
+  if (pool.length === 0) return new Set();
+  const maxGames = Math.max(...pool.map((p) => p.gamesPlayed));
+  return new Set(pool.filter((p) => maxGames - p.gamesPlayed >= 2).map((p) => p.id));
+}
+
 export default function HostSession() {
   const { id } = useParams();
   const sessionId = Number(id);
@@ -99,10 +145,11 @@ export default function HostSession() {
   const [tab, setTab] = useState<Tab>("players");
   const [session, setSession] = useState<Session | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
-  const [matchData, setMatchData] = useState<{ ongoing: Match[]; history: Match[]; suggested: Match[] }>({
+  const [matchData, setMatchData] = useState<{ ongoing: Match[]; history: Match[]; suggested: Match[]; queued: Match[] }>({
     ongoing: [],
     history: [],
     suggested: [],
+    queued: [],
   });
   const [error, setError] = useState("");
 
@@ -166,7 +213,9 @@ export default function HostSession() {
         <QueueTab
           session={session}
           suggested={matchData.suggested}
+          queued={matchData.queued}
           ongoing={matchData.ongoing}
+          history={matchData.history}
           players={players}
           playerById={playerById}
           sessionId={sessionId}
@@ -380,7 +429,7 @@ function CourtsTab({
         ))}
         {emptyCourts.map((label) => (
           <div key={label} className="match-card empty-state">
-            {label} — open · assign a match from the Queue tab
+            {label} — open · fills automatically from the queue
           </div>
         ))}
       </div>
@@ -448,45 +497,38 @@ function ScoreCard({
   );
 }
 
-function TeamLine({ ids, playerById }: { ids: number[]; playerById: (id: number) => Player | undefined }) {
+function TeamLine({
+  ids,
+  playerById,
+  justPlayed,
+  restingLong,
+}: {
+  ids: number[];
+  playerById: (id: number) => Player | undefined;
+  justPlayed?: Set<number>;
+  restingLong?: Set<number>;
+}) {
   return (
     <div className="team-row">
-      <span>{ids.map((id) => playerById(id)?.name ?? "?").join(" & ")}</span>
+      <span>
+        {ids
+          .map((id) => {
+            const name = playerById(id)?.name ?? "?";
+            const flags = `${justPlayed?.has(id) ? " 🥵" : ""}${restingLong?.has(id) ? " ⏳" : ""}`;
+            return name + flags;
+          })
+          .join(" & ")}
+      </span>
     </div>
   );
-}
-
-function eligiblePoolFor(players: Player[], ongoing: Match[]): Player[] {
-  const busy = new Set(ongoing.flatMap((m) => [...m.team1, ...m.team2]));
-  return players.filter((p) => p.approved && p.status === "active" && !busy.has(p.id));
-}
-
-function isStale(match: Match, pool: Player[]): boolean {
-  const ids = [...match.team1, ...match.team2];
-  return ids.some((id) => !pool.some((p) => p.id === id));
-}
-
-function suggestionReason(match: Match, pool: Player[]): string {
-  const ids = [...match.team1, ...match.team2];
-  const involved = pool.filter((p) => ids.includes(p.id));
-  if (involved.length === 0) return "Balanced pick from the active pool";
-  const minGames = Math.min(...pool.map((p) => p.gamesPlayed));
-  if (involved.some((p) => p.gamesPlayed === minGames)) return "Includes a least-played player";
-  if (involved.some((p) => !p.lastMatchEndedAt)) return "Includes a player who hasn't played yet";
-  const rested = pool.filter((p) => p.lastMatchEndedAt);
-  if (rested.length > 0) {
-    const oldest = Math.min(...rested.map((p) => new Date(p.lastMatchEndedAt as string).getTime()));
-    if (involved.some((p) => p.lastMatchEndedAt && new Date(p.lastMatchEndedAt).getTime() === oldest)) {
-      return "Includes the most-rested player";
-    }
-  }
-  return "Balanced pick from the active pool";
 }
 
 function QueueTab({
   session,
   suggested,
+  queued,
   ongoing,
+  history,
   players,
   playerById,
   sessionId,
@@ -494,23 +536,26 @@ function QueueTab({
 }: {
   session: Session;
   suggested: Match[];
+  queued: Match[];
   ongoing: Match[];
+  history: Match[];
   players: Player[];
   playerById: (id: number) => Player | undefined;
   sessionId: number;
   onChanged: () => void;
 }) {
   const [regenerating, setRegenerating] = useState(false);
-  const openCourts = session.courtLabels.filter((label) => !ongoing.some((m) => m.courtLabel === label));
-  const pool = eligiblePoolFor(players, ongoing);
+  const pool = eligiblePoolFor(players, ongoing, queued);
   const anyStale = suggested.some((m) => isStale(m, pool));
+  const justPlayed = justPlayedIds(history);
+  const restingLong = restingLongIds(pool);
+  const queueFull = queued.length >= 8;
 
   return (
     <div>
-      <div className="row between" style={{ marginBottom: 16 }}>
+      <div className="row between" style={{ marginBottom: 8 }}>
         <div style={{ fontSize: 13, color: "var(--muted)" }}>
-          {suggested.length} suggested match{suggested.length === 1 ? "" : "es"} · {openCourts.length} open court
-          {openCourts.length === 1 ? "" : "s"}
+          {suggested.length} suggested · {queued.length}/8 queued
         </div>
         <button
           className="btn small"
@@ -532,13 +577,16 @@ function QueueTab({
         </div>
       )}
 
+      <h3 style={{ fontSize: 15, color: "var(--muted)" }}>Suggested matches</h3>
       <div className="stack">
         {suggested.map((m) => (
           <SuggestionCard
             key={m.id}
             match={m}
             pool={pool}
-            openCourts={openCourts}
+            justPlayed={justPlayed}
+            restingLong={restingLong}
+            queueFull={queueFull}
             playerById={playerById}
             sessionId={sessionId}
             onChanged={onChanged}
@@ -551,14 +599,23 @@ function QueueTab({
         )}
       </div>
 
-      <h3 style={{ fontSize: 15, color: "var(--muted)", marginTop: 28 }}>Build a custom match</h3>
+      <h3 style={{ fontSize: 15, color: "var(--muted)", marginTop: 24 }}>Build a custom match</h3>
       <CustomMatchBuilder
         players={players}
         ongoing={ongoing}
-        openCourts={openCourts}
+        queued={queued}
+        justPlayed={justPlayed}
+        restingLong={restingLong}
+        queueFull={queueFull}
         sessionId={sessionId}
         onChanged={onChanged}
       />
+
+      <h3 style={{ fontSize: 15, color: "var(--muted)", marginTop: 24 }}>Actual queue ({queued.length}/8)</h3>
+      <p className="subtitle" style={{ marginBottom: 12 }}>
+        First in line takes the next court that opens up. Participants see this list — reorder or remove below.
+      </p>
+      <ActualQueueSection queued={queued} playerById={playerById} sessionId={sessionId} onChanged={onChanged} />
     </div>
   );
 }
@@ -566,37 +623,35 @@ function QueueTab({
 function SuggestionCard({
   match,
   pool,
-  openCourts,
+  justPlayed,
+  restingLong,
+  queueFull,
   playerById,
   sessionId,
   onChanged,
 }: {
   match: Match;
   pool: Player[];
-  openCourts: string[];
+  justPlayed: Set<number>;
+  restingLong: Set<number>;
+  queueFull: boolean;
   playerById: (id: number) => Player | undefined;
   sessionId: number;
   onChanged: () => void;
 }) {
-  const [court, setCourt] = useState(openCourts[0] ?? "");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const stale = isStale(match, pool);
   const reason = stale ? null : suggestionReason(match, pool);
 
-  useEffect(() => {
-    if (!openCourts.includes(court)) setCourt(openCourts[0] ?? "");
-  }, [openCourts.join(",")]);
-
-  async function send() {
-    if (!court) return;
+  async function addToQueue() {
     setSending(true);
     setError("");
     try {
-      await api.assignMatch(sessionId, match.id, court);
+      await api.assignMatch(sessionId, match.id);
       await onChanged();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not send this match");
+      setError(err instanceof Error ? err.message : "Could not add this match");
     } finally {
       setSending(false);
     }
@@ -604,25 +659,15 @@ function SuggestionCard({
 
   return (
     <div className="match-card">
-      <TeamLine ids={match.team1} playerById={playerById} />
-      <TeamLine ids={match.team2} playerById={playerById} />
+      <TeamLine ids={match.team1} playerById={playerById} justPlayed={justPlayed} restingLong={restingLong} />
+      <TeamLine ids={match.team2} playerById={playerById} justPlayed={justPlayed} restingLong={restingLong} />
       <div style={{ fontSize: 12, color: stale ? "var(--bad)" : "var(--muted)", marginTop: 4 }}>
         {stale ? "⚠️ Includes a player who's no longer available" : reason}
       </div>
       {error && <div className="error-text" style={{ marginTop: 6 }}>{error}</div>}
-      <div className="row" style={{ marginTop: 10 }}>
-        <select value={court} onChange={(e) => setCourt(e.target.value)} disabled={openCourts.length === 0}>
-          {openCourts.length === 0 && <option value="">No open courts</option>}
-          {openCourts.map((label) => (
-            <option key={label} value={label}>
-              {label}
-            </option>
-          ))}
-        </select>
-        <button className="btn small primary" onClick={send} disabled={sending || !court}>
-          Send
-        </button>
-      </div>
+      <button className="btn small primary" style={{ marginTop: 10 }} onClick={addToQueue} disabled={sending || queueFull}>
+        {queueFull ? "Queue is full" : "Add to queue"}
+      </button>
     </div>
   );
 }
@@ -630,17 +675,23 @@ function SuggestionCard({
 function CustomMatchBuilder({
   players,
   ongoing,
-  openCourts,
+  queued,
+  justPlayed,
+  restingLong,
+  queueFull,
   sessionId,
   onChanged,
 }: {
   players: Player[];
   ongoing: Match[];
-  openCourts: string[];
+  queued: Match[];
+  justPlayed: Set<number>;
+  restingLong: Set<number>;
+  queueFull: boolean;
   sessionId: number;
   onChanged: () => void;
 }) {
-  const busy = new Set(ongoing.flatMap((m) => [...m.team1, ...m.team2]));
+  const busy = new Set([...ongoing, ...queued].flatMap((m) => [...m.team1, ...m.team2]));
   const eligible = players
     .filter((p) => p.approved && p.status === "active" && !busy.has(p.id))
     .sort((a, b) => LEVELS.indexOf(a.level) - LEVELS.indexOf(b.level) || a.name.localeCompare(b.name));
@@ -649,7 +700,6 @@ function CustomMatchBuilder({
   const [team1b, setTeam1b] = useState<number | "">("");
   const [team2a, setTeam2a] = useState<number | "">("");
   const [team2b, setTeam2b] = useState<number | "">("");
-  const [court, setCourt] = useState(openCourts[0] ?? "");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -659,13 +709,17 @@ function CustomMatchBuilder({
     return eligible.filter((p) => p.id === current || !chosen.includes(p.id));
   }
 
+  function flagsFor(id: number) {
+    return `${justPlayed.has(id) ? " 🥵" : ""}${restingLong.has(id) ? " ⏳" : ""}`;
+  }
+
   function pillSelect(value: number | "", onChange: (v: number | "") => void, label: string) {
     return (
       <select value={value} onChange={(e) => onChange(e.target.value ? Number(e.target.value) : "")}>
         <option value="">{label}</option>
         {optionsFor(value).map((p) => (
           <option key={p.id} value={p.id}>
-            {LEVEL_ICON[p.level]} {p.name} · {p.gamesPlayed}g
+            {LEVEL_ICON[p.level]} {p.name} · {p.gamesPlayed}g{flagsFor(p.id)}
           </option>
         ))}
       </select>
@@ -674,13 +728,13 @@ function CustomMatchBuilder({
 
   async function createMatch() {
     setError("");
-    if (team1a === "" || team1b === "" || team2a === "" || team2b === "" || !court) {
-      setError("Pick 4 different players and a court.");
+    if (team1a === "" || team1b === "" || team2a === "" || team2b === "") {
+      setError("Pick 4 different players.");
       return;
     }
     setSubmitting(true);
     try {
-      await api.createCustomMatch(sessionId, court, [team1a, team1b], [team2a, team2b]);
+      await api.createCustomMatch(sessionId, [team1a, team1b], [team2a, team2b]);
       setTeam1a("");
       setTeam1b("");
       setTeam2a("");
@@ -705,25 +759,90 @@ function CustomMatchBuilder({
         {pillSelect(team2a, setTeam2a, "Player A")}
         {pillSelect(team2b, setTeam2b, "Player B")}
       </div>
-      <label style={{ marginTop: 12 }}>Court</label>
-      <div className="row">
-        <select value={court} onChange={(e) => setCourt(e.target.value)} disabled={openCourts.length === 0}>
-          {openCourts.length === 0 && <option value="">No open courts</option>}
-          {openCourts.map((label) => (
-            <option key={label} value={label}>
-              {label}
-            </option>
-          ))}
-        </select>
-        <button className="btn primary" onClick={createMatch} disabled={submitting || openCourts.length === 0}>
-          Create match
-        </button>
-      </div>
+      <button
+        className="btn primary"
+        style={{ marginTop: 12 }}
+        onClick={createMatch}
+        disabled={submitting || queueFull}
+      >
+        {queueFull ? "Queue is full" : "Add to queue"}
+      </button>
       {error && <div className="error-text" style={{ marginTop: 8 }}>{error}</div>}
       {eligible.length < 4 && (
         <div className="empty-state" style={{ padding: "12px 0 0" }}>
           Need at least 4 active, unassigned players to build a custom match.
         </div>
+      )}
+      <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 8 }}>
+        🥵 just played · ⏳ waiting a while
+      </div>
+    </div>
+  );
+}
+
+function ActualQueueSection({
+  queued,
+  playerById,
+  sessionId,
+  onChanged,
+}: {
+  queued: Match[];
+  playerById: (id: number) => Player | undefined;
+  sessionId: number;
+  onChanged: () => void;
+}) {
+  const [busyId, setBusyId] = useState<number | null>(null);
+
+  async function move(index: number, delta: number) {
+    const newIndex = index + delta;
+    if (newIndex < 0 || newIndex >= queued.length) return;
+    const order = queued.map((m) => m.id);
+    [order[index], order[newIndex]] = [order[newIndex], order[index]];
+    setBusyId(queued[index].id);
+    try {
+      await api.reorderQueue(sessionId, order);
+      await onChanged();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function remove(matchId: number) {
+    setBusyId(matchId);
+    try {
+      await api.deleteMatch(matchId);
+      await onChanged();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <div className="stack">
+      {queued.map((m, i) => (
+        <div key={m.id} className="match-card">
+          <div className="court-label">Up #{i + 1}</div>
+          <TeamLine ids={m.team1} playerById={playerById} />
+          <TeamLine ids={m.team2} playerById={playerById} />
+          <div className="row" style={{ marginTop: 10 }}>
+            <button className="btn small" onClick={() => move(i, -1)} disabled={i === 0 || busyId === m.id}>
+              ▲
+            </button>
+            <button
+              className="btn small"
+              onClick={() => move(i, 1)}
+              disabled={i === queued.length - 1 || busyId === m.id}
+            >
+              ▼
+            </button>
+            <button className="btn small danger" onClick={() => remove(m.id)} disabled={busyId === m.id}>
+              Remove
+            </button>
+          </div>
+        </div>
+      ))}
+      {queued.length === 0 && (
+        <div className="empty-state">Queue is empty — add a suggested or custom match above.</div>
       )}
     </div>
   );
