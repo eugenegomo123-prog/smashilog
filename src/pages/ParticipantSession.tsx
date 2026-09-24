@@ -19,8 +19,7 @@ function timeAgo(iso: string): string {
 function rankCompare(a: Player, b: Player) {
   const wrA = a.wins / a.gamesPlayed || 0, wrB = b.wins / b.gamesPlayed || 0;
   if (wrA !== wrB) return wrB - wrA;
-  if (a.wins !== b.wins) return b.wins - a.wins;
-  if (a.losses !== b.losses) return a.losses - b.losses;
+  if (a.gamesPlayed !== b.gamesPlayed) return b.gamesPlayed - a.gamesPlayed;
   const dA = (a.pointsFor - a.pointsAgainst) / a.gamesPlayed || 0;
   const dB = (b.pointsFor - b.pointsAgainst) / b.gamesPlayed || 0;
   if (dA !== dB) return dB - dA;
