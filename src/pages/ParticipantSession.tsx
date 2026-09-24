@@ -17,17 +17,15 @@ function timeAgo(iso: string): string {
 }
 
 function rankCompare(a: Player, b: Player) {
-  const netA = a.wins - a.losses;
-  const netB = b.wins - b.losses;
-  if (netB !== netA) return netB - netA;
-  const diffA = a.gamesPlayed ? (a.pointsFor - a.pointsAgainst) / a.gamesPlayed : 0;
-  const diffB = b.gamesPlayed ? (b.pointsFor - b.pointsAgainst) / b.gamesPlayed : 0;
-  if (diffB !== diffA) return diffB - diffA;
-  const levelA = LEVELS.indexOf(a.level);
-  const levelB = LEVELS.indexOf(b.level);
-  if (levelA !== levelB) return levelA - levelB;
+  const wrA = a.wins / a.gamesPlayed || 0, wrB = b.wins / b.gamesPlayed || 0;
+  if (wrA !== wrB) return wrB - wrA;
+  if (a.wins !== b.wins) return b.wins - a.wins;
   if (a.losses !== b.losses) return a.losses - b.losses;
-  return a.name.localeCompare(b.name);
+  const dA = (a.pointsFor - a.pointsAgainst) / a.gamesPlayed || 0;
+  const dB = (b.pointsFor - b.pointsAgainst) / b.gamesPlayed || 0;
+  if (dA !== dB) return dB - dA;
+  const lA = LEVELS.indexOf(a.level), lB = LEVELS.indexOf(b.level);
+  return lA !== lB ? lA - lB : a.name.localeCompare(b.name);
 }
 
 // Longest win streak any player actually reached during the session (not just
