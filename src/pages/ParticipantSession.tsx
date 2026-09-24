@@ -21,6 +21,9 @@ function rankCompare(a: Player, b: Player) {
   const wpA = a.gamesPlayed ? a.wins / a.gamesPlayed : 0;
   const wpB = b.gamesPlayed ? b.wins / b.gamesPlayed : 0;
   if (wpB !== wpA) return wpB - wpA;
+  const diffA = a.gamesPlayed ? (a.pointsFor - a.pointsAgainst) / a.gamesPlayed : 0;
+  const diffB = b.gamesPlayed ? (b.pointsFor - b.pointsAgainst) / b.gamesPlayed : 0;
+  if (diffB !== diffA) return diffB - diffA;
   if (a.losses !== b.losses) return a.losses - b.losses;
   return a.name.localeCompare(b.name);
 }
