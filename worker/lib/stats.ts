@@ -82,11 +82,14 @@ export async function recomputeSessionStats(db: Db, sessionId: number) {
   }
 }
 
-export async function playerIdsInOngoingMatches(db: Db, sessionId: number): Promise<Set<number>> {
-  const ongoing = await db.select().from(matches).where(eq(matches.sessionId, sessionId));
+// A player counts as unavailable for new suggestions/custom matches/queue entries if
+// they're either actually on a court right now, or already lined up in the actual
+// queue -- either way they shouldn't be double-booked into something else.
+export async function playerIdsUnavailable(db: Db, sessionId: number): Promise<Set<number>> {
+  const all = await db.select().from(matches).where(eq(matches.sessionId, sessionId));
   const busy = new Set<number>();
-  for (const m of ongoing) {
-    if (m.status !== "ongoing") continue;
+  for (const m of all) {
+    if (m.status !== "ongoing" && m.status !== "queued") continue;
     for (const pid of m.team1 as number[]) busy.add(pid);
     for (const pid of m.team2 as number[]) busy.add(pid);
   }
