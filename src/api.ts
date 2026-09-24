@@ -36,11 +36,12 @@ export interface Match {
   courtLabel: string;
   team1: number[];
   team2: number[];
-  status: "ongoing" | "completed" | "suggested";
+  status: "ongoing" | "completed" | "suggested" | "queued";
   score1: number | null;
   score2: number | null;
   startedAt: string;
   endedAt: string | null;
+  queuePosition: number | null;
 }
 
 function hostToken(): string | null {
@@ -94,18 +95,28 @@ export const api = {
   removePlayer: (id: number) => request<{ ok: true }>(`/players/${id}`, { method: "DELETE" }),
 
   getMatches: (sessionId: number) =>
-    request<{ ongoing: Match[]; history: Match[]; suggested: Match[] }>(`/sessions/${sessionId}/matches`),
+    request<{ ongoing: Match[]; history: Match[]; suggested: Match[]; queued: Match[] }>(
+      `/sessions/${sessionId}/matches`,
+    ),
   regenerateSuggestions: (sessionId: number) =>
     request<{ ok: true }>(`/sessions/${sessionId}/regenerate`, { method: "POST" }),
-  assignMatch: (sessionId: number, matchId: number, courtLabel: string) =>
+  // Moves a suggested match into the actual queue (no court chosen here -- the
+  // queue fills open courts automatically, front first).
+  assignMatch: (sessionId: number, matchId: number) =>
     request<{ ok: true }>(`/sessions/${sessionId}/assign-match`, {
       method: "POST",
-      body: JSON.stringify({ matchId, courtLabel }),
+      body: JSON.stringify({ matchId }),
     }),
-  createCustomMatch: (sessionId: number, courtLabel: string, team1: [number, number], team2: [number, number]) =>
+  // Builds a custom match and adds it to the end of the actual queue.
+  createCustomMatch: (sessionId: number, team1: [number, number], team2: [number, number]) =>
     request<Match>(`/sessions/${sessionId}/custom-match`, {
       method: "POST",
-      body: JSON.stringify({ courtLabel, team1, team2 }),
+      body: JSON.stringify({ team1, team2 }),
+    }),
+  reorderQueue: (sessionId: number, order: number[]) =>
+    request<{ ok: true }>(`/sessions/${sessionId}/queue/reorder`, {
+      method: "POST",
+      body: JSON.stringify({ order }),
     }),
   submitScore: (matchId: number, score1: number, score2: number) =>
     request<{ ok: true }>(`/matches/${matchId}`, { method: "PATCH", body: JSON.stringify({ score1, score2 }) }),
