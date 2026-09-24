@@ -3,7 +3,7 @@ import { useParams } from "react-router-dom";
 import { api, LEVELS, LEVEL_ICON, LEVEL_LABEL, type Level, type Match, type Player, type Session } from "../api";
 import { playerKey } from "./ParticipantJoin";
 
-type Tab = "dashboard" | "ongoing" | "ranking" | "history";
+type Tab = "dashboard" | "ongoing" | "queue" | "ranking" | "history";
 
 function timeAgo(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();
@@ -98,13 +98,15 @@ export default function ParticipantSession() {
   const sessionId = Number(id);
   const [session, setSession] = useState<Session | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
-  const [matchData, setMatchData] = useState<{ ongoing: Match[]; history: Match[]; suggested: Match[] }>({
+  const [matchData, setMatchData] = useState<{ ongoing: Match[]; history: Match[]; suggested: Match[]; queued: Match[] }>({
     ongoing: [],
     history: [],
     suggested: [],
+    queued: [],
   });
   const [toast, setToast] = useState<string | null>(null);
   const wasOnCourt = useRef(false);
+  const lastThreshold = useRef<"none" | "soon" | "next">("none");
 
   const myId = Number(localStorage.getItem(playerKey(sessionId))) || null;
   const isEnded = session?.status === "ended";
@@ -117,7 +119,7 @@ export default function ParticipantSession() {
   }, [sessionId]);
 
   useEffect(() => {
-    if (isEnded && (tab === "dashboard" || tab === "ongoing")) setTab("ranking");
+    if (isEnded && (tab === "dashboard" || tab === "ongoing" || tab === "queue")) setTab("ranking");
   }, [isEnded]);
 
   async function load() {
@@ -129,14 +131,13 @@ export default function ParticipantSession() {
     setSession(s);
     setPlayers(p);
     setMatchData(m);
-    checkOnCourt(m.ongoing);
+    checkStatus(m.ongoing, m.queued);
   }
 
-  // Since matches now come from a pool of suggestions the host chooses between
-  // (rather than one fixed, ordered queue), there's no reliable "you're up
-  // soon" position to predict anymore. Instead, this fires the moment the host
-  // actually sends you out to a court -- accurate, if a little less advance notice.
-  function checkOnCourt(ongoing: Match[]) {
+  // Now that the actual queue is a real, host-curated order (not just a computer
+  // guess), a predictive "you're up soon" notice is reliable again -- alongside the
+  // confirmatory "you're on court now" one for the moment it actually happens.
+  function checkStatus(ongoing: Match[], queued: Match[]) {
     if (!myId) return;
     const myMatch = ongoing.find((m) => [...m.team1, ...m.team2].includes(myId));
     const isOnCourtNow = !!myMatch;
@@ -144,6 +145,22 @@ export default function ParticipantSession() {
       fireNotification(`You're on ${myMatch!.courtLabel} — head to the court!`);
     }
     wasOnCourt.current = isOnCourtNow;
+
+    if (isOnCourtNow) {
+      lastThreshold.current = "none";
+      return;
+    }
+
+    const index = queued.findIndex((m) => [...m.team1, ...m.team2].includes(myId));
+    let threshold: "none" | "soon" | "next" = "none";
+    if (index === 0) threshold = "next";
+    else if (index >= 1 && index < 3) threshold = "soon";
+
+    if (threshold !== "none" && threshold !== lastThreshold.current) {
+      if (threshold === "next") fireNotification("You're up next — head toward the courts!");
+      else fireNotification("You're up soon — get ready!");
+    }
+    lastThreshold.current = threshold;
   }
 
   function fireNotification(message: string) {
@@ -170,6 +187,7 @@ export default function ParticipantSession() {
 
       {tab === "dashboard" && me && <DashboardTab player={me} players={players} onChanged={load} />}
       {tab === "ongoing" && <OngoingTab matches={matchData.ongoing} playerById={playerById} myId={myId} />}
+      {tab === "queue" && <QueueTab queued={matchData.queued} playerById={playerById} myId={myId} />}
       {tab === "ranking" && (
         <RankingTab session={session} players={players.filter((p) => p.approved)} history={matchData.history} />
       )}
@@ -178,6 +196,7 @@ export default function ParticipantSession() {
       <nav className="tabs">
         {!isEnded && <button className={tab === "dashboard" ? "active" : ""} onClick={() => setTab("dashboard")}>🏠 Dashboard</button>}
         {!isEnded && <button className={tab === "ongoing" ? "active" : ""} onClick={() => setTab("ongoing")}>🏸 Courts</button>}
+        {!isEnded && <button className={tab === "queue" ? "active" : ""} onClick={() => setTab("queue")}>⏳ Queue</button>}
         <button className={tab === "ranking" ? "active" : ""} onClick={() => setTab("ranking")}>🏆 Ranking</button>
         <button className={tab === "history" ? "active" : ""} onClick={() => setTab("history")}>📜 History</button>
       </nav>
@@ -292,6 +311,36 @@ function OngoingTab({
         );
       })}
       {matches.length === 0 && <div className="empty-state">No games in progress.</div>}
+    </div>
+  );
+}
+
+function QueueTab({
+  queued,
+  playerById,
+  myId,
+}: {
+  queued: Match[];
+  playerById: (id: number) => Player | undefined;
+  myId: number | null;
+}) {
+  return (
+    <div className="stack">
+      {queued.map((m, i) => {
+        const mine = [...m.team1, ...m.team2].includes(myId ?? -1);
+        return (
+          <div key={m.id} className="match-card" style={mine ? { borderColor: "var(--accent)" } : undefined}>
+            <div className="court-label">Up #{i + 1}</div>
+            <div className="team-row">
+              <span>{m.team1.map((id) => playerById(id)?.name ?? "?").join(" & ")}</span>
+            </div>
+            <div className="team-row">
+              <span>{m.team2.map((id) => playerById(id)?.name ?? "?").join(" & ")}</span>
+            </div>
+          </div>
+        );
+      })}
+      {queued.length === 0 && <div className="empty-state">No matches queued right now.</div>}
     </div>
   );
 }
