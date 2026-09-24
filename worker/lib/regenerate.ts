@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import type { Db } from "../../db";
 import { matches, players, sessions } from "../../db/schema";
 import { generateSuggestedMatches, type PlayerForMatchmaking } from "./matchmaking";
-import { playerIdsInOngoingMatches } from "./stats";
+import { playerIdsUnavailable } from "./stats";
 
 const SUGGESTIONS_PER_REGENERATE = 8;
 
@@ -45,19 +45,19 @@ function buildLastPartnerMap(allMatches: (typeof matches.$inferSelect)[]): Map<n
 }
 
 // Replace the session's suggested matches with a fresh batch computed from whoever
-// is currently eligible (approved, status "active", and not already on a court).
-// Never touches ongoing or completed matches -- only the suggestion pool the host
-// picks from. Safe to call at any time; nothing is sent to a court automatically.
+// is currently eligible: approved, status "active", and not already on a court or
+// already sitting in the actual queue. Never touches ongoing/queued/completed matches
+// -- only the suggestion pool. Safe to call at any time.
 export async function regenerateQueue(db: Db, sessionId: number) {
   const [session] = await db.select().from(sessions).where(eq(sessions.id, sessionId));
   if (!session || session.status !== "active") return;
 
   const allPlayers = await db.select().from(players).where(eq(players.sessionId, sessionId));
   const allMatches = await db.select().from(matches).where(eq(matches.sessionId, sessionId));
-  const busy = await playerIdsInOngoingMatches(db, sessionId);
+  const unavailable = await playerIdsUnavailable(db, sessionId);
 
   const eligible: PlayerForMatchmaking[] = allPlayers
-    .filter((p) => p.approved && p.status === "active" && !busy.has(p.id))
+    .filter((p) => p.approved && p.status === "active" && !unavailable.has(p.id))
     .map(toMatchmakingPlayer);
 
   const lastPartnerOf = buildLastPartnerMap(allMatches);
