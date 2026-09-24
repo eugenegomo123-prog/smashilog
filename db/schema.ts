@@ -47,9 +47,11 @@ export const matches = pgTable("matches", {
   courtLabel: text("court_label").notNull(),
   team1: jsonb("team1").notNull(), // [playerId, playerId]
   team2: jsonb("team2").notNull(),
-  status: text().notNull().default("ongoing"), // ongoing | completed | suggested
+  status: text().notNull().default("ongoing"), // ongoing | queued | completed | suggested
   score1: integer("score1"),
   score2: integer("score2"),
   startedAt: timestamp("started_at").defaultNow().notNull(),
   endedAt: timestamp("ended_at"),
+  // Only meaningful while status is "queued" -- position in the actual queue (0 = front).
+  queuePosition: integer("queue_position"),
 });
