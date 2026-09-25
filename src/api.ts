@@ -1,5 +1,6 @@
 export type Level = "A" | "B" | "C" | "D" | "E";
 export type PlayerStatus = "active" | "resting" | "inactive";
+export type PlayingMode = "competitive" | "chill";
 
 export interface Session {
   id: number;
@@ -18,6 +19,7 @@ export interface Player {
   level: Level;
   requestedLevel: Level | null;
   status: PlayerStatus;
+  playingMode: PlayingMode;
   approved: boolean;
   wins: number;
   losses: number;
@@ -90,7 +92,7 @@ export const api = {
     }),
   updatePlayer: (
     id: number,
-    updates: Partial<Pick<Player, "level" | "status" | "approved" | "name" | "preferredPartnerId">>,
+    updates: Partial<Pick<Player, "level" | "status" | "approved" | "name" | "preferredPartnerId" | "playingMode">>,
   ) => request<Player>(`/players/${id}`, { method: "PATCH", body: JSON.stringify(updates) }),
   removePlayer: (id: number) => request<{ ok: true }>(`/players/${id}`, { method: "DELETE" }),
 
