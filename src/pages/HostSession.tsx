@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { api, LEVELS, LEVEL_ICON, LEVEL_LABEL, type Session, type Player, type Match, type Level } from "../api";
+import { api, LEVELS, LEVEL_ICON, LEVEL_LABEL, type Session, type Player, type Match, type Level, type PlayingMode } from "../api";
 
 type Tab = "players" | "courts" | "queue" | "ranking" | "history" | "settings";
 
@@ -229,7 +229,11 @@ export default function HostSession() {
         />
       )}
       {tab === "ranking" && (
-        <RankingTab session={session} players={players.filter((p) => p.approved)} history={matchData.history} />
+        <RankingTab
+          session={session}
+          players={players.filter((p) => p.approved && p.playingMode !== "chill")}
+          history={matchData.history}
+        />
       )}
       {tab === "history" && <HistoryTab history={matchData.history} playerById={playerById} onChanged={load} />}
       {tab === "settings" && <SettingsTab session={session} onChanged={load} />}
@@ -397,6 +401,18 @@ function PlayersTab({
               >
                 Remove
               </button>
+            </div>
+            <div className="row" style={{ marginTop: 8 }}>
+              <select
+                value={p.playingMode}
+                onChange={async (e) => {
+                  await api.updatePlayer(p.id, { playingMode: e.target.value as PlayingMode });
+                  onChanged();
+                }}
+              >
+                <option value="competitive">🏆 Competitive — ranked</option>
+                <option value="chill">😎 Chilling — unranked</option>
+              </select>
             </div>
           </div>
         ))}
