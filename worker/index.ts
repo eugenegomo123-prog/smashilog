@@ -17,6 +17,7 @@ type Bindings = {
 
 const LEVELS = ["A", "B", "C", "D", "E"];
 const STATUSES = ["active", "resting", "inactive"];
+const PLAYING_MODES = ["competitive", "chill"];
 
 const app = new Hono<{ Bindings: Bindings }>();
 
