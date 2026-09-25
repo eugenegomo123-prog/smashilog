@@ -17,16 +17,17 @@ function timeAgo(iso: string): string {
 }
 
 function rankCompare(a: Player, b: Player) {
-  const netA = a.wins - a.losses;
-  const netB = b.wins - b.losses;
-  if (netB !== netA) return netB - netA;
+  const wpA = a.gamesPlayed ? a.wins / a.gamesPlayed : 0;
+  const wpB = b.gamesPlayed ? b.wins / b.gamesPlayed : 0;
+  if (wpB !== wpA) return wpB - wpA;
+  if (b.wins !== a.wins) return b.wins - a.wins;
+  if (a.losses !== b.losses) return a.losses - b.losses;
   const diffA = a.gamesPlayed ? (a.pointsFor - a.pointsAgainst) / a.gamesPlayed : 0;
   const diffB = b.gamesPlayed ? (b.pointsFor - b.pointsAgainst) / b.gamesPlayed : 0;
   if (diffB !== diffA) return diffB - diffA;
   const levelA = LEVELS.indexOf(a.level);
   const levelB = LEVELS.indexOf(b.level);
   if (levelA !== levelB) return levelA - levelB;
-  if (a.losses !== b.losses) return a.losses - b.losses;
   return a.name.localeCompare(b.name);
 }
 
