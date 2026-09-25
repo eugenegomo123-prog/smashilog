@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { api, LEVELS, LEVEL_ICON, LEVEL_LABEL, type Level, type Match, type Player, type Session } from "../api";
+import { api, LEVELS, LEVEL_ICON, LEVEL_LABEL, type Level, type Match, type Player, type Session, type PlayingMode } from "../api";
 import { playerKey } from "./ParticipantJoin";
 
 type Tab = "dashboard" | "ongoing" | "queue" | "ranking" | "history";
@@ -195,7 +195,11 @@ export default function ParticipantSession() {
       {tab === "ongoing" && <OngoingTab matches={matchData.ongoing} playerById={playerById} myId={myId} />}
       {tab === "queue" && <QueueTab queued={matchData.queued} playerById={playerById} myId={myId} />}
       {tab === "ranking" && (
-        <RankingTab session={session} players={players.filter((p) => p.approved)} history={matchData.history} />
+        <RankingTab
+          session={session}
+          players={players.filter((p) => p.approved && p.playingMode !== "chill")}
+          history={matchData.history}
+        />
       )}
       {tab === "history" && <HistoryTab history={matchData.history} playerById={playerById} />}
 
@@ -283,6 +287,19 @@ function DashboardTab({
               {p.name}
             </option>
           ))}
+        </select>
+      </div>
+      <div className="card">
+        <label>Playing mode</label>
+        <select
+          value={player.playingMode}
+          onChange={async (e) => {
+            await api.updatePlayer(player.id, { playingMode: e.target.value as PlayingMode });
+            onChanged();
+          }}
+        >
+          <option value="competitive">🏆 I'm competitive — put me in the ranking</option>
+          <option value="chill">😎 I'm chilling (unranked)</option>
         </select>
       </div>
     </div>
