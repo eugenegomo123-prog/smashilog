@@ -26,6 +26,7 @@ export const players = pgTable("players", {
   level: text().notNull().default("C"), // A-E
   requestedLevel: text("requested_level"),
   status: text().notNull().default("active"), // active | resting | inactive
+  playingMode: text("playing_mode").notNull().default("competitive"), // competitive | chill (chill = excluded from ranking)
   approved: boolean().notNull().default(false),
   wins: integer().notNull().default(0),
   losses: integer().notNull().default(0),
