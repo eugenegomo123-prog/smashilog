@@ -309,9 +309,10 @@ app.patch("/api/players/:id", async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const updates: Record<string, unknown> = {};
 
-  // Self-service: any participant can change their own level, status, or preferred partner.
+  // Self-service: any participant can change their own level, status, playing mode, or preferred partner.
   if (LEVELS.includes(body.level)) updates.level = body.level;
   if (STATUSES.includes(body.status)) updates.status = body.status;
+  if (PLAYING_MODES.includes(body.playingMode)) updates.playingMode = body.playingMode;
   if (body.preferredPartnerId === null) {
     updates.preferredPartnerId = null;
   } else if (body.preferredPartnerId !== undefined && Number.isFinite(Number(body.preferredPartnerId))) {
