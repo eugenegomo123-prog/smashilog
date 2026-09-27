@@ -7,8 +7,15 @@
 // also means the secret is no longer read from `process.env` -- Workers pass bindings
 // and secrets through the request-scoped `env` object, so the secret is now an explicit
 // argument instead of a module-level lookup.
+//
+// Player-account tokens (createPlayerToken/verifyPlayerToken/requirePlayer, added below)
+// reuse the same HOST_PASSWORD secret and the same sign()/timingSafeEqual() helpers, just
+// with a different payload shape (`accountId.expiry` instead of a bare expiry). Reusing
+// the secret avoids requiring a second Worker secret just for this; the two token kinds
+// never cross-validate since their payload strings are shaped differently.
 
-const TOKEN_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
+const TOKEN_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours -- host tokens
+const PLAYER_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days -- player-account tokens
 
 function toBase64Url(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
@@ -58,4 +65,35 @@ export async function verifyHostToken(token: string | null | undefined, secret: 
 export async function requireHost(req: Request, secret: string): Promise<boolean> {
   const token = req.headers.get("x-host-token");
   return verifyHostToken(token, secret);
+}
+
+// --- Player-account tokens --------------------------------------------------
+// Same idea as the host token above, but the payload carries an account id
+// (`accountId.expiry`) instead of just an expiry, so verifying one recovers which
+// account it belongs to.
+
+export async function createPlayerToken(accountId: number, secret: string): Promise<string> {
+  const payload = `${accountId}.${Date.now() + PLAYER_TOKEN_TTL_MS}`;
+  const sig = await sign(payload, secret);
+  return `${payload}.${sig}`;
+}
+
+export async function verifyPlayerToken(token: string | null | undefined, secret: string): Promise<number | null> {
+  if (!token) return null;
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  const [accountIdStr, expiryStr, sig] = parts;
+  const payload = `${accountIdStr}.${expiryStr}`;
+  const expected = await sign(payload, secret);
+  if (!timingSafeEqual(expected, sig)) return null;
+  const expiry = Number(expiryStr);
+  if (!Number.isFinite(expiry) || expiry < Date.now()) return null;
+  const accountId = Number(accountIdStr);
+  if (!Number.isFinite(accountId)) return null;
+  return accountId;
+}
+
+export async function requirePlayer(req: Request, secret: string): Promise<number | null> {
+  const token = req.headers.get("x-player-token");
+  return verifyPlayerToken(token, secret);
 }

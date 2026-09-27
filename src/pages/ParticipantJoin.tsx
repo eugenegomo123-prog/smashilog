@@ -1,10 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { api, LEVELS, LEVEL_ICON, LEVEL_LABEL, type Level, type Player, type Session } from "../api";
-
-function playerKey(sessionId: number) {
-  return `smashilog_player_${sessionId}`;
-}
+import { api, LEVELS, playerKey, type Level, type Player, type Session } from "../api";
 
 export default function ParticipantJoin() {
   const { id } = useParams();
@@ -101,7 +97,7 @@ export default function ParticipantJoin() {
             <select value={level} onChange={(e) => setLevel(e.target.value as Level)}>
               {LEVELS.map((l) => (
                 <option key={l} value={l}>
-                  {LEVEL_ICON[l]} {l} · {LEVEL_LABEL[l]}
+                  Level {l}
                 </option>
               ))}
             </select>
