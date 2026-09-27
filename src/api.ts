@@ -1,5 +1,6 @@
 export type Level = "A" | "B" | "C" | "D" | "E";
 export type PlayerStatus = "active" | "resting" | "inactive";
+export type PlayingMode = "competitive" | "chill";
 
 export interface Session {
   id: number;
@@ -15,10 +16,10 @@ export interface Player {
   id: number;
   sessionId: number;
   name: string;
-  accountId: number | null;
   level: Level;
   requestedLevel: Level | null;
   status: PlayerStatus;
+  playingMode: PlayingMode;
   approved: boolean;
   wins: number;
   losses: number;
@@ -27,6 +28,7 @@ export interface Player {
   currentStreak: number;
   gamesPlayed: number;
   lastMatchEndedAt: string | null;
+  preferredPartnerId: number | null;
   createdAt: string;
 }
 
@@ -36,104 +38,23 @@ export interface Match {
   courtLabel: string;
   team1: number[];
   team2: number[];
-  status: "ongoing" | "completed";
+  status: "ongoing" | "completed" | "suggested" | "queued";
   score1: number | null;
   score2: number | null;
   startedAt: string;
   endedAt: string | null;
-}
-
-export interface ProjectedPlayer {
-  id: number;
-  level: Level;
-}
-
-export interface ProjectedMatch {
-  team1: ProjectedPlayer[];
-  team2: ProjectedPlayer[];
-}
-
-// --- Player accounts ---------------------------------------------------------------
-
-export interface Account {
-  id: number;
-  username: string;
-  name: string;
-}
-
-export interface ActiveSessionInfo {
-  sessionId: number;
-  sessionName: string;
-  playerId: number;
-}
-
-export interface MeResponse {
-  account: Account;
-  activeSession: ActiveSessionInfo | null;
-}
-
-export interface OverallStats {
-  sessionsPlayed: number;
-  gamesPlayed: number;
-  wins: number;
-  losses: number;
-  totalPoints: number;
-  averageScore: number;
-  highestScore: number;
-}
-
-export interface HistoryEntry {
-  sessionId: number;
-  sessionName: string;
-  sessionStatus: "active" | "ended";
-  date: string;
-  playerId: number;
-  gamesPlayed: number;
-  wins: number;
-  losses: number;
-  totalPoints: number;
-}
-
-export interface RankingEntry {
-  accountId: number;
-  name: string;
-  wins: number;
-  losses: number;
-  gamesPlayed: number;
-  totalPoints: number;
-  winPct: number;
-}
-
-export interface ActiveSessionForAccount {
-  id: number;
-  name: string;
-  playerCount: number;
-  alreadyJoined: boolean;
-  pendingApproval: boolean;
-}
-
-// The localStorage key a guest (or a registered player) uses to remember "which player
-// row am I" for a given session. Defined here (rather than in a page component) so both
-// the guest join flow and the account flow can share exactly one implementation.
-export function playerKey(sessionId: number): string {
-  return `smashilog_player_${sessionId}`;
+  queuePosition: number | null;
 }
 
 function hostToken(): string | null {
   return localStorage.getItem("smashilog_host_token");
 }
 
-function playerToken(): string | null {
-  return localStorage.getItem("smashilog_player_token");
-}
-
 async function request<T>(path: string, opts: RequestInit = {}): Promise<T> {
   const headers = new Headers(opts.headers);
   headers.set("Content-Type", "application/json");
-  const hToken = hostToken();
-  if (hToken) headers.set("x-host-token", hToken);
-  const pToken = playerToken();
-  if (pToken) headers.set("x-player-token", pToken);
+  const token = hostToken();
+  if (token) headers.set("x-host-token", token);
   const res = await fetch(`/api${path}`, { ...opts, headers });
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }));
@@ -171,59 +92,54 @@ export const api = {
     }),
   updatePlayer: (
     id: number,
-    updates: Partial<Pick<Player, "level" | "status" | "approved" | "name">>,
+    updates: Partial<Pick<Player, "level" | "status" | "approved" | "name" | "preferredPartnerId" | "playingMode">>,
   ) => request<Player>(`/players/${id}`, { method: "PATCH", body: JSON.stringify(updates) }),
   removePlayer: (id: number) => request<{ ok: true }>(`/players/${id}`, { method: "DELETE" }),
 
   getMatches: (sessionId: number) =>
-    request<{ ongoing: Match[]; history: Match[]; queue: ProjectedMatch[] }>(`/sessions/${sessionId}/matches`),
-  regenerateQueue: (sessionId: number) =>
+    request<{ ongoing: Match[]; history: Match[]; suggested: Match[]; queued: Match[] }>(
+      `/sessions/${sessionId}/matches`,
+    ),
+  regenerateSuggestions: (sessionId: number) =>
     request<{ ok: true }>(`/sessions/${sessionId}/regenerate`, { method: "POST" }),
+  // Moves a suggested match into the actual queue (no court chosen here -- the
+  // queue fills open courts automatically, front first).
+  assignMatch: (sessionId: number, matchId: number) =>
+    request<{ ok: true }>(`/sessions/${sessionId}/assign-match`, {
+      method: "POST",
+      body: JSON.stringify({ matchId }),
+    }),
+  // Builds a custom match and adds it to the end of the actual queue.
+  createCustomMatch: (sessionId: number, team1: [number, number], team2: [number, number]) =>
+    request<Match>(`/sessions/${sessionId}/custom-match`, {
+      method: "POST",
+      body: JSON.stringify({ team1, team2 }),
+    }),
+  reorderQueue: (sessionId: number, order: number[]) =>
+    request<{ ok: true }>(`/sessions/${sessionId}/queue/reorder`, {
+      method: "POST",
+      body: JSON.stringify({ order }),
+    }),
   submitScore: (matchId: number, score1: number, score2: number) =>
     request<{ ok: true }>(`/matches/${matchId}`, { method: "PATCH", body: JSON.stringify({ score1, score2 }) }),
-
-  // --- Player accounts ---------------------------------------------------------
-
-  signup: (token: string, username: string, password: string, name: string) =>
-    request<{ token: string; account: Account }>("/auth/signup", {
-      method: "POST",
-      body: JSON.stringify({ token, username, password, name }),
-    }),
-  login: (username: string, password: string) =>
-    request<{ token: string; account: Account }>("/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ username, password }),
-    }),
-  setPlayerToken: (token: string) => localStorage.setItem("smashilog_player_token", token),
-  clearPlayerToken: () => localStorage.removeItem("smashilog_player_token"),
-  isPlayerLoggedIn: () => !!playerToken(),
-
-  getMe: () => request<MeResponse>("/accounts/me"),
-  getOverallStats: () => request<OverallStats>("/accounts/me/overall-stats"),
-  getHistory: () => request<HistoryEntry[]>("/accounts/me/history"),
-  listActiveSessionsForAccount: () => request<ActiveSessionForAccount[]>("/accounts/me/active-sessions"),
-  joinSessionAsAccount: (sessionId: number) =>
-    request<Player>(`/sessions/${sessionId}/join-as-account`, { method: "POST" }),
-
-  // Figures out "which player row, in this session, is me" -- checking the local guest
-  // key first (cheap, and already set for anyone who joined the normal way), and only
-  // falling back to an account lookup (and caching the result the same way) if that's
-  // empty and the visitor is logged in as a registered player.
-  resolveMyPlayerId: async (sessionId: number): Promise<number | null> => {
-    const stored = localStorage.getItem(playerKey(sessionId));
-    if (stored) return Number(stored);
-    if (!playerToken()) return null;
-    const { playerId } = await request<{ playerId: number | null }>(`/accounts/me/player-in-session/${sessionId}`);
-    if (playerId) localStorage.setItem(playerKey(sessionId), String(playerId));
-    return playerId;
-  },
-
-  getRanking: (period: string) => request<RankingEntry[]>(`/ranking?period=${encodeURIComponent(period)}`),
-  getRankingMonths: () => request<string[]>("/ranking/months"),
-
-  getRegistrationToken: () => request<{ token: string | null }>("/host/registration-token"),
-  regenerateRegistrationToken: () =>
-    request<{ token: string }>("/host/registration-token/regenerate", { method: "POST" }),
+  deleteMatch: (matchId: number) => request<{ ok: true }>(`/matches/${matchId}`, { method: "DELETE" }),
 };
 
 export const LEVELS: Level[] = ["A", "B", "C", "D", "E"];
+
+// Cute egg-to-chicken icons for each skill level.
+export const LEVEL_ICON: Record<Level, string> = {
+  E: "🥚",
+  D: "🐣",
+  C: "🐤",
+  B: "🐔",
+  A: "🍗",
+};
+
+export const LEVEL_LABEL: Record<Level, string> = {
+  E: "Egg",
+  D: "Hatchling",
+  C: "Chick",
+  B: "Chicken",
+  A: "Roast",
+};

@@ -1,13 +1,11 @@
 import { Hono } from "hono";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { getDb } from "../db";
-import { accounts, appConfig, matches, players, sessions } from "../db/schema";
-import { createHostToken, createPlayerToken, requireHost, requirePlayer } from "./lib/auth";
-import { computeHistory, computeOverallStats, computeRanking, listRankingMonths } from "./lib/accountStats";
-import { projectMatches, sortByPriority, type PlayerForMatchmaking } from "./lib/matchmaking";
-import { hashPassword, verifyPassword } from "./lib/password";
+import { matches, players, sessions } from "../db/schema";
+import { createHostToken, requireHost } from "./lib/auth";
 import { regenerateQueue } from "./lib/regenerate";
-import { playerIdsInOngoingMatches, recomputeSessionStats } from "./lib/stats";
+import { fillOpenCourtsFromQueue, nextQueuePosition, MAX_QUEUE_LENGTH } from "./lib/queue";
+import { playerIdsUnavailable, recomputeSessionStats } from "./lib/stats";
 
 // Bindings available on `c.env`, set in wrangler.jsonc / as Worker secrets.
 // `ASSETS` is the binding for the static frontend build (see wrangler.jsonc "assets").
@@ -19,6 +17,7 @@ type Bindings = {
 
 const LEVELS = ["A", "B", "C", "D", "E"];
 const STATUSES = ["active", "resting", "inactive"];
+const PLAYING_MODES = ["competitive", "chill"];
 
 const app = new Hono<{ Bindings: Bindings }>();
 
@@ -143,37 +142,161 @@ app.get("/api/sessions/:id/matches", async (c) => {
 
   const all = await db.select().from(matches).where(eq(matches.sessionId, sessionId));
   const ongoing = all.filter((m) => m.status === "ongoing");
+  const suggested = all.filter((m) => m.status === "suggested");
+  const queued = all
+    .filter((m) => m.status === "queued")
+    .sort((a, b) => (a.queuePosition ?? 0) - (b.queuePosition ?? 0));
   const history = all
     .filter((m) => m.status === "completed")
     .sort((a, b) => new Date(b.endedAt as unknown as string).getTime() - new Date(a.endedAt as unknown as string).getTime());
 
-  const allPlayers = await db.select().from(players).where(eq(players.sessionId, sessionId));
-  const busy = await playerIdsInOngoingMatches(db, sessionId);
-  const pool: PlayerForMatchmaking[] = sortByPriority(
-    allPlayers
-      .filter((p) => p.approved && p.status === "active" && !busy.has(p.id))
-      .map((p) => ({
-        id: p.id,
-        level: p.level,
-        currentStreak: p.currentStreak,
-        pointsFor: p.pointsFor,
-        pointsAgainst: p.pointsAgainst,
-        gamesPlayed: p.gamesPlayed,
-        lastMatchEndedAt: p.lastMatchEndedAt ? (p.lastMatchEndedAt as unknown as Date).toISOString() : null,
-      })),
-  );
-  const queue = projectMatches(pool, 8);
-
-  return c.json({ ongoing, history, queue });
+  return c.json({ ongoing, history, suggested, queued });
 });
 
-// POST /api/sessions/:id/regenerate
+// POST /api/sessions/:id/regenerate -- rebuild the suggested-matches pool. Can be
+// called any time; it only ever touches "suggested" rows.
 app.post("/api/sessions/:id/regenerate", async (c) => {
   if (!(await requireHost(c.req.raw, hostSecret(c.env)))) return c.text("Unauthorized", 401);
   const sessionId = Number(c.req.param("id"));
   if (!Number.isFinite(sessionId)) return c.text("Invalid session id", 400);
   const db = getDb(c.env.DATABASE_URL);
   await regenerateQueue(db, sessionId);
+  return c.json({ ok: true });
+});
+
+// POST /api/sessions/:id/assign-match -- host moves a suggested match into the actual
+// queue (it no longer picks a court directly; the queue fills courts automatically).
+app.post("/api/sessions/:id/assign-match", async (c) => {
+  if (!(await requireHost(c.req.raw, hostSecret(c.env)))) return c.text("Unauthorized", 401);
+  const sessionId = Number(c.req.param("id"));
+  if (!Number.isFinite(sessionId)) return c.text("Invalid session id", 400);
+  const db = getDb(c.env.DATABASE_URL);
+  const body = await c.req.json().catch(() => ({}));
+  const matchId = Number(body.matchId);
+  if (!Number.isFinite(matchId)) return c.json({ error: "matchId is required" }, 400);
+
+  const [suggested] = await db.select().from(matches).where(eq(matches.id, matchId));
+  if (!suggested || suggested.sessionId !== sessionId || suggested.status !== "suggested") {
+    return c.json({ error: "That suggestion is no longer available -- try regenerating." }, 400);
+  }
+
+  const allMatches = await db.select().from(matches).where(eq(matches.sessionId, sessionId));
+  const queuedCount = allMatches.filter((m) => m.status === "queued").length;
+  if (queuedCount >= MAX_QUEUE_LENGTH) {
+    return c.json({ error: `Queue is full (max ${MAX_QUEUE_LENGTH}) -- remove or play one first.` }, 400);
+  }
+
+  const involved = new Set<number>([...(suggested.team1 as number[]), ...(suggested.team2 as number[])]);
+  const sessionPlayers = await db.select().from(players).where(eq(players.sessionId, sessionId));
+  const playerMap = new Map(sessionPlayers.map((p) => [p.id, p]));
+  const unavailable = await playerIdsUnavailable(db, sessionId);
+  for (const pid of involved) {
+    const p = playerMap.get(pid);
+    if (!p || !p.approved || p.status !== "active") {
+      return c.json({ error: "One of these players is no longer active -- try regenerating." }, 400);
+    }
+    if (unavailable.has(pid)) {
+      return c.json({ error: "One of these players is already on a court or queued -- try regenerating." }, 400);
+    }
+  }
+
+  const position = await nextQueuePosition(db, sessionId);
+  await db
+    .update(matches)
+    .set({ status: "queued", queuePosition: position })
+    .where(eq(matches.id, matchId));
+
+  // Any other suggestion sharing a player with the one just queued is now stale.
+  const stale = allMatches.filter(
+    (m) =>
+      m.status === "suggested" &&
+      m.id !== matchId &&
+      [...(m.team1 as number[]), ...(m.team2 as number[])].some((pid) => involved.has(pid)),
+  );
+  for (const m of stale) {
+    await db.delete(matches).where(eq(matches.id, m.id));
+  }
+
+  await fillOpenCourtsFromQueue(db, sessionId);
+  return c.json({ ok: true });
+});
+
+// POST /api/sessions/:id/custom-match -- host manually builds both teams and adds
+// them to the end of the actual queue (also no court picked here anymore).
+app.post("/api/sessions/:id/custom-match", async (c) => {
+  if (!(await requireHost(c.req.raw, hostSecret(c.env)))) return c.text("Unauthorized", 401);
+  const sessionId = Number(c.req.param("id"));
+  if (!Number.isFinite(sessionId)) return c.text("Invalid session id", 400);
+  const db = getDb(c.env.DATABASE_URL);
+  const body = await c.req.json().catch(() => ({}));
+  const team1 = Array.isArray(body.team1) ? body.team1.map(Number) : [];
+  const team2 = Array.isArray(body.team2) ? body.team2.map(Number) : [];
+  if (team1.length !== 2 || team2.length !== 2) {
+    return c.json({ error: "team1 and team2 must each have 2 players" }, 400);
+  }
+  const allIds = [...team1, ...team2];
+  if (new Set(allIds).size !== 4) return c.json({ error: "Pick 4 different players" }, 400);
+
+  const allMatches = await db.select().from(matches).where(eq(matches.sessionId, sessionId));
+  const queuedCount = allMatches.filter((m) => m.status === "queued").length;
+  if (queuedCount >= MAX_QUEUE_LENGTH) {
+    return c.json({ error: `Queue is full (max ${MAX_QUEUE_LENGTH}) -- remove or play one first.` }, 400);
+  }
+
+  const unavailable = await playerIdsUnavailable(db, sessionId);
+  if (allIds.some((pid) => unavailable.has(pid))) {
+    return c.json({ error: "One of these players is already on a court or queued" }, 400);
+  }
+
+  const sessionPlayers = await db.select().from(players).where(eq(players.sessionId, sessionId));
+  const validIds = new Set(sessionPlayers.filter((p) => p.approved && p.status === "active").map((p) => p.id));
+  if (allIds.some((pid) => !validIds.has(pid))) {
+    return c.json({ error: "Unknown or inactive player" }, 400);
+  }
+
+  // A manually-queued match makes any suggestion sharing these players stale.
+  const involved = new Set(allIds);
+  const stale = allMatches.filter(
+    (m) =>
+      m.status === "suggested" &&
+      [...(m.team1 as number[]), ...(m.team2 as number[])].some((pid) => involved.has(pid)),
+  );
+  for (const m of stale) {
+    await db.delete(matches).where(eq(matches.id, m.id));
+  }
+
+  const position = await nextQueuePosition(db, sessionId);
+  const [created] = await db
+    .insert(matches)
+    .values({ sessionId, courtLabel: "", team1, team2, status: "queued", queuePosition: position })
+    .returning();
+
+  await fillOpenCourtsFromQueue(db, sessionId);
+  return c.json(created, 201);
+});
+
+// POST /api/sessions/:id/queue/reorder -- host reorders the actual queue. Body is the
+// full desired order (all currently queued match ids, in the new sequence).
+app.post("/api/sessions/:id/queue/reorder", async (c) => {
+  if (!(await requireHost(c.req.raw, hostSecret(c.env)))) return c.text("Unauthorized", 401);
+  const sessionId = Number(c.req.param("id"));
+  if (!Number.isFinite(sessionId)) return c.text("Invalid session id", 400);
+  const db = getDb(c.env.DATABASE_URL);
+  const body = await c.req.json().catch(() => ({}));
+  const order = Array.isArray(body.order) ? body.order.map(Number) : [];
+
+  const current = await db.select().from(matches).where(eq(matches.sessionId, sessionId));
+  const currentQueued = current.filter((m) => m.status === "queued");
+  const currentIds = new Set(currentQueued.map((m) => m.id));
+  if (order.length !== currentQueued.length || !order.every((id: number) => currentIds.has(id))) {
+    return c.json({ error: "Order must include exactly the currently queued matches" }, 400);
+  }
+
+  for (let i = 0; i < order.length; i++) {
+    await db.update(matches).set({ queuePosition: i }).where(eq(matches.id, order[i]));
+  }
+
+  await fillOpenCourtsFromQueue(db, sessionId);
   return c.json({ ok: true });
 });
 
@@ -186,9 +309,24 @@ app.patch("/api/players/:id", async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const updates: Record<string, unknown> = {};
 
-  // Self-service: any participant can change their own level or status.
+  // Self-service: any participant can change their own level, status, playing mode, or preferred partner.
   if (LEVELS.includes(body.level)) updates.level = body.level;
   if (STATUSES.includes(body.status)) updates.status = body.status;
+  if (PLAYING_MODES.includes(body.playingMode)) updates.playingMode = body.playingMode;
+  if (body.preferredPartnerId === null) {
+    updates.preferredPartnerId = null;
+  } else if (body.preferredPartnerId !== undefined && Number.isFinite(Number(body.preferredPartnerId))) {
+    const partnerId = Number(body.preferredPartnerId);
+    if (partnerId === id) {
+      return c.json({ error: "Can't set yourself as your own preferred partner" }, 400);
+    }
+    const [existing] = await db.select().from(players).where(eq(players.id, id));
+    const [partner] = await db.select().from(players).where(eq(players.id, partnerId));
+    if (!existing || !partner || partner.sessionId !== existing.sessionId || !partner.approved) {
+      return c.json({ error: "Unknown player" }, 400);
+    }
+    updates.preferredPartnerId = partnerId;
+  }
 
   // Host-only: approve join requests, override level/status/name.
   if (isHost) {
@@ -213,7 +351,7 @@ app.delete("/api/players/:id", async (c) => {
   return c.json({ ok: true });
 });
 
-// PATCH /api/matches/:id
+// PATCH /api/matches/:id -- submit or edit a score
 app.patch("/api/matches/:id", async (c) => {
   const id = Number(c.req.param("id"));
   if (!Number.isFinite(id)) return c.text("Invalid match id", 400);
@@ -245,213 +383,33 @@ app.patch("/api/matches/:id", async (c) => {
   // completion and a later score edit.
   await recomputeSessionStats(db, match.sessionId);
 
-  // A fresh completion frees up a court; re-run the queue to fill it immediately.
+  // A fresh completion frees up a court -- pull the front of the actual queue onto it.
   if (!wasAlreadyCompleted) {
-    await regenerateQueue(db, match.sessionId);
+    await fillOpenCourtsFromQueue(db, match.sessionId);
   }
 
   return c.json({ ok: true });
 });
 
-// --- Player accounts ---------------------------------------------------------------
-// Everything below this line is new: registered-player login/signup, the host's QR
-// registration token, and the account-scoped stats/ranking/history/join endpoints.
-// None of it touches the guest/participant flow above -- a registered player just ends
-// up with a normal `players` row (like a guest) that additionally has `accountId` set.
-
-// Host-only: view or regenerate the player registration token (what the sign-up QR
-// code encodes as `${origin}/signup?token=...`).
-app.get("/api/host/registration-token", async (c) => {
+// DELETE /api/matches/:id -- remove a match (in-progress, queued, or completed).
+// Stats are always recomputed afterward; harmless when the match had no score yet.
+app.delete("/api/matches/:id", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isFinite(id)) return c.text("Invalid match id", 400);
   if (!(await requireHost(c.req.raw, hostSecret(c.env)))) return c.text("Unauthorized", 401);
   const db = getDb(c.env.DATABASE_URL);
-  const [config] = await db.select().from(appConfig);
-  return c.json({ token: config?.registrationToken ?? null });
-});
-
-app.post("/api/host/registration-token/regenerate", async (c) => {
-  if (!(await requireHost(c.req.raw, hostSecret(c.env)))) return c.text("Unauthorized", 401);
-  const db = getDb(c.env.DATABASE_URL);
-  const token = crypto.randomUUID().replace(/-/g, "");
-  const [existing] = await db.select().from(appConfig);
-  if (existing) {
-    await db.update(appConfig).set({ registrationToken: token, updatedAt: new Date() }).where(eq(appConfig.id, existing.id));
-  } else {
-    await db.insert(appConfig).values({ registrationToken: token });
+  const [match] = await db.select().from(matches).where(eq(matches.id, id));
+  if (!match) return c.text("Not found", 404);
+  if (match.status === "suggested") {
+    return c.json({ error: "Suggested matches aren't deleted this way -- try regenerating." }, 400);
   }
-  return c.json({ token });
-});
-
-// POST /api/auth/signup -- requires the current registration token (from the QR code).
-app.post("/api/auth/signup", async (c) => {
-  const db = getDb(c.env.DATABASE_URL);
-  const body = await c.req.json().catch(() => ({}));
-  const token = String(body.token || "");
-  const username = String(body.username || "").trim().toLowerCase();
-  const password = String(body.password || "");
-  const name = String(body.name || "").trim();
-
-  const [config] = await db.select().from(appConfig);
-  if (!config || !token || token !== config.registrationToken) {
-    return c.json({ error: "Invalid or missing registration code. Ask the host for the QR code." }, 401);
+  const wasOngoing = match.status === "ongoing";
+  await db.delete(matches).where(eq(matches.id, id));
+  await recomputeSessionStats(db, match.sessionId);
+  if (wasOngoing) {
+    await fillOpenCourtsFromQueue(db, match.sessionId);
   }
-  if (!username || username.length < 3) return c.json({ error: "Username must be at least 3 characters" }, 400);
-  if (!password || password.length < 6) return c.json({ error: "Password must be at least 6 characters" }, 400);
-  if (!name) return c.json({ error: "Display name is required" }, 400);
-
-  const [existing] = await db.select().from(accounts).where(eq(accounts.username, username));
-  if (existing) return c.json({ error: "That username is already taken" }, 409);
-
-  const { salt, hash } = await hashPassword(password);
-  const [created] = await db
-    .insert(accounts)
-    .values({ username, passwordSalt: salt, passwordHash: hash, name })
-    .returning();
-
-  const playerToken = await createPlayerToken(created.id, hostSecret(c.env));
-  return c.json(
-    { token: playerToken, account: { id: created.id, username: created.username, name: created.name } },
-    201,
-  );
-});
-
-app.post("/api/auth/login", async (c) => {
-  const db = getDb(c.env.DATABASE_URL);
-  const body = await c.req.json().catch(() => ({}));
-  const username = String(body.username || "").trim().toLowerCase();
-  const password = String(body.password || "");
-
-  const [account] = await db.select().from(accounts).where(eq(accounts.username, username));
-  if (!account || !(await verifyPassword(password, account.passwordSalt, account.passwordHash))) {
-    return c.json({ error: "Incorrect username or password" }, 401);
-  }
-  const playerToken = await createPlayerToken(account.id, hostSecret(c.env));
-  return c.json({ token: playerToken, account: { id: account.id, username: account.username, name: account.name } });
-});
-
-// GET /api/accounts/me -- the logged-in player's info, plus whether they're already in
-// an active session (so the app can offer "Return to Session" instead of "Join").
-app.get("/api/accounts/me", async (c) => {
-  const accountId = await requirePlayer(c.req.raw, hostSecret(c.env));
-  if (!accountId) return c.text("Unauthorized", 401);
-  const db = getDb(c.env.DATABASE_URL);
-  const [account] = await db.select().from(accounts).where(eq(accounts.id, accountId));
-  if (!account) return c.text("Not found", 404);
-
-  const myPlayerRows = await db.select().from(players).where(eq(players.accountId, accountId));
-  let activeSession: { sessionId: number; sessionName: string; playerId: number } | null = null;
-  if (myPlayerRows.length > 0) {
-    const sessionIds = [...new Set(myPlayerRows.map((p) => p.sessionId))];
-    const relatedSessions = await db.select().from(sessions).where(inArray(sessions.id, sessionIds));
-    const active = relatedSessions.find((s) => s.status === "active");
-    if (active) {
-      const row = myPlayerRows.find((p) => p.sessionId === active.id)!;
-      activeSession = { sessionId: active.id, sessionName: active.name, playerId: row.id };
-    }
-  }
-
-  return c.json({ account: { id: account.id, username: account.username, name: account.name }, activeSession });
-});
-
-app.get("/api/accounts/me/overall-stats", async (c) => {
-  const accountId = await requirePlayer(c.req.raw, hostSecret(c.env));
-  if (!accountId) return c.text("Unauthorized", 401);
-  const db = getDb(c.env.DATABASE_URL);
-  return c.json(await computeOverallStats(db, accountId));
-});
-
-app.get("/api/accounts/me/history", async (c) => {
-  const accountId = await requirePlayer(c.req.raw, hostSecret(c.env));
-  if (!accountId) return c.text("Unauthorized", 401);
-  const db = getDb(c.env.DATABASE_URL);
-  return c.json(await computeHistory(db, accountId));
-});
-
-// Resolves which per-session player row (if any) belongs to the logged-in account for a
-// given session -- used by ParticipantSession so a registered player's "my dashboard"
-// tab works even on a device that never went through the guest join flow for it.
-app.get("/api/accounts/me/player-in-session/:sessionId", async (c) => {
-  const accountId = await requirePlayer(c.req.raw, hostSecret(c.env));
-  if (!accountId) return c.text("Unauthorized", 401);
-  const sessionId = Number(c.req.param("sessionId"));
-  if (!Number.isFinite(sessionId)) return c.text("Invalid session id", 400);
-  const db = getDb(c.env.DATABASE_URL);
-  const [row] = await db
-    .select()
-    .from(players)
-    .where(and(eq(players.accountId, accountId), eq(players.sessionId, sessionId)));
-  return c.json({ playerId: row?.id ?? null });
-});
-
-app.get("/api/accounts/me/active-sessions", async (c) => {
-  const accountId = await requirePlayer(c.req.raw, hostSecret(c.env));
-  if (!accountId) return c.text("Unauthorized", 401);
-  const db = getDb(c.env.DATABASE_URL);
-  const activeSessions = await db.select().from(sessions).where(eq(sessions.status, "active"));
-  const allPlayers = await db.select().from(players);
-
-  const result = activeSessions.map((s) => {
-    const inThisSession = allPlayers.filter((p) => p.sessionId === s.id);
-    const mine = inThisSession.find((p) => p.accountId === accountId);
-    return {
-      id: s.id,
-      name: s.name,
-      playerCount: inThisSession.filter((p) => p.approved).length,
-      alreadyJoined: !!mine,
-      pendingApproval: mine ? !mine.approved : false,
-    };
-  });
-  return c.json(result);
-});
-
-// POST /api/sessions/:id/join-as-account -- same approval flow as a guest join request
-// (creates an unapproved players row for the host to approve), but linked to the
-// logged-in account. Idempotent: calling it again for a session already joined just
-// returns the existing row, so re-tapping "Join"/"Return" never creates duplicates.
-app.post("/api/sessions/:id/join-as-account", async (c) => {
-  const accountId = await requirePlayer(c.req.raw, hostSecret(c.env));
-  if (!accountId) return c.text("Unauthorized", 401);
-  const sessionId = Number(c.req.param("id"));
-  if (!Number.isFinite(sessionId)) return c.text("Invalid session id", 400);
-  const db = getDb(c.env.DATABASE_URL);
-
-  const [session] = await db.select().from(sessions).where(eq(sessions.id, sessionId));
-  if (!session) return c.text("Not found", 404);
-  if (session.status !== "active") return c.json({ error: "This session is not active" }, 400);
-
-  const [existing] = await db
-    .select()
-    .from(players)
-    .where(and(eq(players.accountId, accountId), eq(players.sessionId, sessionId)));
-  if (existing) return c.json(existing);
-
-  const [account] = await db.select().from(accounts).where(eq(accounts.id, accountId));
-  if (!account) return c.text("Account not found", 404);
-
-  const [created] = await db
-    .insert(players)
-    .values({
-      sessionId,
-      name: account.name,
-      accountId,
-      requestedLevel: "C",
-      approved: false,
-      status: "active",
-    })
-    .returning();
-  return c.json(created, 201);
-});
-
-// GET /api/ranking?period=all|YYYY-MM -- public, read-only aggregate (no player info
-// beyond display name), same as the existing per-session ranking table.
-app.get("/api/ranking", async (c) => {
-  const db = getDb(c.env.DATABASE_URL);
-  const period = c.req.query("period") || "all";
-  return c.json(await computeRanking(db, period));
-});
-
-app.get("/api/ranking/months", async (c) => {
-  const db = getDb(c.env.DATABASE_URL);
-  return c.json(await listRankingMonths(db));
+  return c.json({ ok: true });
 });
 
 // Anything that isn't an /api/* route: hand off to the static asset binding, which

@@ -6,9 +6,6 @@ import HostSession from "./pages/HostSession";
 import ParticipantSessions from "./pages/ParticipantSessions";
 import ParticipantJoin from "./pages/ParticipantJoin";
 import ParticipantSession from "./pages/ParticipantSession";
-import Login from "./pages/Login";
-import Signup from "./pages/Signup";
-import PlayerHome from "./pages/PlayerHome";
 
 export default function App() {
   return (
@@ -20,9 +17,6 @@ export default function App() {
       <Route path="/join" element={<ParticipantSessions />} />
       <Route path="/join/:id" element={<ParticipantJoin />} />
       <Route path="/session/:id" element={<ParticipantSession />} />
-      <Route path="/login" element={<Login />} />
-      <Route path="/signup" element={<Signup />} />
-      <Route path="/player" element={<PlayerHome />} />
     </Routes>
   );
 }

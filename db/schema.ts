@@ -19,36 +19,14 @@ export const sessions = pgTable("sessions", {
   endedAt: timestamp("ended_at"),
 });
 
-// A permanent player login, separate from any one session. Created only through the
-// host's QR-code registration flow (see appConfig.registrationToken below). A `players`
-// row (one per session) can optionally link back to one of these via `accountId`, which
-// is how a registered player's stats get added up across every session they've joined.
-export const accounts = pgTable("accounts", {
-  id: serial().primaryKey(),
-  username: text().notNull().unique(),
-  passwordHash: text("password_hash").notNull(),
-  passwordSalt: text("password_salt").notNull(),
-  name: text().notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-// Single-row table holding app-wide settings. Today that's just the current player
-// registration token (the value encoded in the host's sign-up QR code) -- regenerating
-// it immediately invalidates any previously printed/displayed QR code.
-export const appConfig = pgTable("app_config", {
-  id: serial().primaryKey(),
-  registrationToken: text("registration_token").notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
-
 export const players = pgTable("players", {
   id: serial().primaryKey(),
   sessionId: integer("session_id").notNull().references(() => sessions.id),
   name: text().notNull(),
-  accountId: integer("account_id").references(() => accounts.id), // null for guest players
   level: text().notNull().default("C"), // A-E
   requestedLevel: text("requested_level"),
   status: text().notNull().default("active"), // active | resting | inactive
+  playingMode: text("playing_mode").notNull().default("competitive"), // competitive | chill (chill = excluded from ranking)
   approved: boolean().notNull().default(false),
   wins: integer().notNull().default(0),
   losses: integer().notNull().default(0),
@@ -57,6 +35,10 @@ export const players = pgTable("players", {
   currentStreak: integer("current_streak").notNull().default(0),
   gamesPlayed: integer("games_played").notNull().default(0),
   lastMatchEndedAt: timestamp("last_match_ended_at"),
+  // Another player's id, same session. Self-service (a participant sets their own).
+  // No DB foreign key, to keep a self-referencing column simple -- validated in the
+  // API layer instead (must be an approved player in the same session).
+  preferredPartnerId: integer("preferred_partner_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -66,9 +48,11 @@ export const matches = pgTable("matches", {
   courtLabel: text("court_label").notNull(),
   team1: jsonb("team1").notNull(), // [playerId, playerId]
   team2: jsonb("team2").notNull(),
-  status: text().notNull().default("ongoing"), // ongoing | completed
+  status: text().notNull().default("ongoing"), // ongoing | queued | completed | suggested
   score1: integer("score1"),
   score2: integer("score2"),
   startedAt: timestamp("started_at").defaultNow().notNull(),
   endedAt: timestamp("ended_at"),
+  // Only meaningful while status is "queued" -- position in the actual queue (0 = front).
+  queuePosition: integer("queue_position"),
 });
