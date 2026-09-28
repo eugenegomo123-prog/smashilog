@@ -1006,12 +1006,31 @@ function HistoryTab({
   playerById: (id: number) => Player | undefined;
   onChanged: () => void;
 }) {
+  const [search, setSearch] = useState("");
+  const term = search.trim().toLowerCase();
+  const filtered = term
+    ? history.filter((m) =>
+        [...m.team1, ...m.team2].some((id) => (playerById(id)?.name ?? "").toLowerCase().includes(term)),
+      )
+    : history;
+
   return (
-    <div className="stack">
-      {history.map((m) => (
-        <HistoryCard key={m.id} match={m} playerById={playerById} onChanged={onChanged} />
-      ))}
-      {history.length === 0 && <div className="empty-state">No completed matches yet.</div>}
+    <div>
+      <input
+        placeholder="Search history by player…"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        style={{ marginBottom: 12 }}
+      />
+      <div className="stack">
+        {filtered.map((m) => (
+          <HistoryCard key={m.id} match={m} playerById={playerById} onChanged={onChanged} />
+        ))}
+        {history.length === 0 && <div className="empty-state">No completed matches yet.</div>}
+        {history.length > 0 && filtered.length === 0 && (
+          <div className="empty-state">No matches involving "{search}".</div>
+        )}
+      </div>
     </div>
   );
 }
