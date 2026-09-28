@@ -54,24 +54,32 @@ function computeLongestStreaks(history: Match[]): Map<number, number> {
   return longest;
 }
 
+// A single 🔥 for any win streak of 3 or more -- the exact length still shows on hover.
+function fireBadge(streak: number) {
+  if (streak < 3) return null;
+  return <span title={`${streak}-win streak`}>🔥</span>;
+}
+
 function buildAwards(players: Player[], history: Match[]) {
   const withGames = players.filter((p) => p.gamesPlayed > 0);
   if (withGames.length === 0) return null;
-  const mostGames = [...withGames].sort((a, b) => b.gamesPlayed - a.gamesPlayed)[0];
+
+  const maxGames = Math.max(...withGames.map((p) => p.gamesPlayed));
+  const mostGames = withGames.filter((p) => p.gamesPlayed === maxGames);
+
   const bestDiff = [...withGames].sort(
     (a, b) => (b.pointsFor - b.pointsAgainst) / b.gamesPlayed - (a.pointsFor - a.pointsAgainst) / a.gamesPlayed,
   )[0];
+
   const longestStreaks = computeLongestStreaks(history);
-  let streakPlayer: Player | null = null;
   let streakValue = 0;
   for (const p of withGames) {
-    const s = longestStreaks.get(p.id) ?? 0;
-    if (s > streakValue) {
-      streakValue = s;
-      streakPlayer = p;
-    }
+    streakValue = Math.max(streakValue, longestStreaks.get(p.id) ?? 0);
   }
-  return { mostGames, bestDiff, streakPlayer, streakValue };
+  const streakPlayers =
+    streakValue >= 2 ? withGames.filter((p) => (longestStreaks.get(p.id) ?? 0) === streakValue) : [];
+
+  return { mostGames, bestDiff, streakPlayers, streakValue };
 }
 
 function buildResultsText(session: Session, players: Player[]): string {
@@ -916,7 +924,7 @@ function RankingTab({ session, players, history }: { session: Session; players: 
                   <tr key={p.id}>
                     <td>{i + 4}</td>
                     <td>
-                      {p.name} {p.currentStreak >= 3 && <span title={`${p.currentStreak}-win streak`}>🔥</span>}{" "}
+                      {p.name} {fireBadge(p.currentStreak)}{" "}
                       <span style={{ color: "var(--muted)" }}>{LEVEL_ICON[p.level]}</span>
                     </td>
                     <td>{p.wins}-{p.losses}</td>
@@ -943,17 +951,17 @@ function AwardsPanel({ awards }: { awards: NonNullable<ReturnType<typeof buildAw
       <h3 style={{ fontSize: 15, color: "var(--accent-2)", marginTop: 0 }}>🏆 Session awards</h3>
       <div className="stack">
         <div className="row between">
-          <span>🎽 Most games played</span>
-          <strong>{awards.mostGames.name} ({awards.mostGames.gamesPlayed})</strong>
-        </div>
-        <div className="row between">
           <span>📈 Best point diff</span>
           <strong>{awards.bestDiff.name} ({diffVal > 0 ? "+" : ""}{diffVal.toFixed(1)})</strong>
         </div>
-        {awards.streakPlayer && awards.streakValue >= 2 && (
+        <div className="row between">
+          <span>🎽 Most games played</span>
+          <strong>{awards.mostGames.map((p) => p.name).join(", ")} ({awards.mostGames[0].gamesPlayed})</strong>
+        </div>
+        {awards.streakPlayers.length > 0 && (
           <div className="row between">
             <span>🔥 Longest win streak</span>
-            <strong>{awards.streakPlayer.name} ({awards.streakValue})</strong>
+            <strong>{awards.streakPlayers.map((p) => p.name).join(", ")} ({awards.streakValue})</strong>
           </div>
         )}
       </div>
@@ -981,7 +989,7 @@ function PodiumPlace({ place, player }: { place: 1 | 2 | 3; player?: Player }) {
       {place === 1 && <div className="podium-crown">👑</div>}
       <div className="podium-avatar">{LEVEL_ICON[player.level]}</div>
       <div className="podium-name">
-        {player.name} {player.currentStreak >= 3 && <span title={`${player.currentStreak}-win streak`}>🔥</span>}
+        {player.name} {fireBadge(player.currentStreak)}
       </div>
       <div className="podium-record">{player.wins}-{player.losses} · {winPct}%</div>
       <div className="podium-stand">{place}</div>
@@ -1036,7 +1044,7 @@ function HistoryCard({
     setDeleting(true);
     try {
       await api.deleteMatch(match.id);
-      onChanged();
+      await onChanged();
     } finally {
       setDeleting(false);
     }
