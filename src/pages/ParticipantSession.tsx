@@ -209,7 +209,7 @@ export default function ParticipantSession() {
           history={matchData.history}
         />
       )}
-      {tab === "history" && <HistoryTab history={matchData.history} playerById={playerById} />}
+      {tab === "history" && <HistoryTab history={matchData.history} playerById={playerById} myId={myId} />}
 
       <nav className="tabs">
         {!isEnded && <button className={tab === "dashboard" ? "active" : ""} onClick={() => setTab("dashboard")}>🏠 Dashboard</button>}
@@ -495,10 +495,28 @@ function PodiumPlace({ place, player }: { place: 1 | 2 | 3; player?: Player }) {
   );
 }
 
-function HistoryTab({ history, playerById }: { history: Match[]; playerById: (id: number) => Player | undefined }) {
+function HistoryTab({
+  history,
+  playerById,
+  myId,
+}: {
+  history: Match[];
+  playerById: (id: number) => Player | undefined;
+  myId: number | null;
+}) {
+  const [onlyMine, setOnlyMine] = useState(false);
+  const filtered = onlyMine && myId ? history.filter((m) => [...m.team1, ...m.team2].includes(myId)) : history;
+
   return (
-    <div className="stack">
-      {history.map((m) => (
+    <div>
+      {myId && (
+        <label className="row" style={{ marginBottom: 12, cursor: "pointer" }}>
+          <input type="checkbox" checked={onlyMine} onChange={(e) => setOnlyMine(e.target.checked)} style={{ width: "auto" }} />
+          <span>Show only my matches</span>
+        </label>
+      )}
+      <div className="stack">
+      {filtered.map((m) => (
         <div key={m.id} className="match-card">
           <div className="court-label">{m.courtLabel} · {new Date(m.endedAt ?? m.startedAt).toLocaleString()}</div>
           <div className="team-row">
@@ -512,6 +530,10 @@ function HistoryTab({ history, playerById }: { history: Match[]; playerById: (id
         </div>
       ))}
       {history.length === 0 && <div className="empty-state">No completed matches yet.</div>}
+      {history.length > 0 && filtered.length === 0 && (
+        <div className="empty-state">No matches yet where you played.</div>
+      )}
+      </div>
     </div>
   );
 }
