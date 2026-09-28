@@ -511,18 +511,22 @@ function ScoreCard({
       <div className="court-label">
         {match.courtLabel} · started {timeAgo(match.startedAt)}
       </div>
-      <TeamLine ids={match.team1} playerById={playerById} />
-      <TeamLine ids={match.team2} playerById={playerById} />
+      <div className="team-row">
+        <span>{match.team1.map((id) => playerById(id)?.name ?? "?").join(" & ")}</span>
+        <input className="score-input" placeholder="0" value={score1} onChange={(e) => setScore1(e.target.value)} inputMode="numeric" />
+      </div>
+      <div className="team-row">
+        <span>{match.team2.map((id) => playerById(id)?.name ?? "?").join(" & ")}</span>
+        <input className="score-input" placeholder="0" value={score2} onChange={(e) => setScore2(e.target.value)} inputMode="numeric" />
+      </div>
       <div className="row" style={{ marginTop: 10 }}>
-        <input placeholder="Score 1" value={score1} onChange={(e) => setScore1(e.target.value)} inputMode="numeric" />
-        <input placeholder="Score 2" value={score2} onChange={(e) => setScore2(e.target.value)} inputMode="numeric" />
         <button className="btn small primary" onClick={submit} disabled={submitting}>
           End
         </button>
+        <button className="btn small danger" onClick={remove} disabled={removing}>
+          {removing ? "Removing…" : "Remove match"}
+        </button>
       </div>
-      <button className="btn small danger" style={{ marginTop: 8 }} onClick={remove} disabled={removing}>
-        {removing ? "Removing…" : "Remove match"}
-      </button>
     </div>
   );
 }
@@ -1076,16 +1080,22 @@ function HistoryCard({
       </div>
       <div className="team-row">
         <span>{match.team1.map((id) => playerById(id)?.name ?? "?").join(" & ")}</span>
-        <strong>{match.score1}</strong>
+        {editing ? (
+          <input className="score-input" value={score1} onChange={(e) => setScore1(e.target.value)} inputMode="numeric" />
+        ) : (
+          <strong>{match.score1}</strong>
+        )}
       </div>
       <div className="team-row">
         <span>{match.team2.map((id) => playerById(id)?.name ?? "?").join(" & ")}</span>
-        <strong>{match.score2}</strong>
+        {editing ? (
+          <input className="score-input" value={score2} onChange={(e) => setScore2(e.target.value)} inputMode="numeric" />
+        ) : (
+          <strong>{match.score2}</strong>
+        )}
       </div>
       {editing ? (
         <div className="row" style={{ marginTop: 10 }}>
-          <input value={score1} onChange={(e) => setScore1(e.target.value)} inputMode="numeric" />
-          <input value={score2} onChange={(e) => setScore2(e.target.value)} inputMode="numeric" />
           <button className="btn small primary" onClick={save}>
             Save
           </button>
