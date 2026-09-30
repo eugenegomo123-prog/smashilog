@@ -1,9 +1,10 @@
 import { Hono } from "hono";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { getDb } from "../db";
 import { accounts, matches, players, sessions } from "../db/schema";
 import { createHostToken, requireHost } from "./lib/auth";
 import { createPlayerToken, createRegistrationToken, requirePlayer, verifyRegistrationToken } from "./lib/playerAuth";
+import { computeOverallStats } from "./lib/accountStats";
 import { hashPassword, verifyPassword } from "./lib/passwords";
 import { regenerateQueue } from "./lib/regenerate";
 import { fillOpenCourtsFromQueue, nextQueuePosition, MAX_QUEUE_LENGTH } from "./lib/queue";
@@ -102,6 +103,88 @@ app.post("/api/login", async (c) => {
 
   const playerToken = await createPlayerToken(account.id, secret);
   return c.json({ token: playerToken, username: account.username });
+});
+
+// GET /api/me -- basic account info, plus whether this account currently has an
+// active-session participation (for "Return to session" on the player's home page).
+app.get("/api/me", async (c) => {
+  const secret = playerAuthSecret(c.env);
+  const accountId = secret ? await requirePlayer(c.req.raw, secret) : null;
+  if (!accountId) return c.text("Unauthorized", 401);
+  const db = getDb(c.env.DATABASE_URL);
+  const [account] = await db.select().from(accounts).where(eq(accounts.id, accountId));
+  if (!account) return c.text("Not found", 404);
+
+  const myRows = await db.select().from(players).where(eq(players.accountId, accountId));
+  let activeParticipation: { sessionId: number; sessionName: string; approved: boolean } | null = null;
+  if (myRows.length > 0) {
+    const sessionIds = [...new Set(myRows.map((p) => p.sessionId))];
+    const mySessions = await db.select().from(sessions).where(inArray(sessions.id, sessionIds));
+    const activeSession = mySessions.find((s) => s.status === "active");
+    if (activeSession) {
+      const myRow = myRows.find((p) => p.sessionId === activeSession.id)!;
+      activeParticipation = { sessionId: activeSession.id, sessionName: activeSession.name, approved: myRow.approved };
+    }
+  }
+
+  return c.json({ username: account.username, activeParticipation });
+});
+
+// GET /api/me/stats -- totals across every session this account has ever joined.
+app.get("/api/me/stats", async (c) => {
+  const secret = playerAuthSecret(c.env);
+  const accountId = secret ? await requirePlayer(c.req.raw, secret) : null;
+  if (!accountId) return c.text("Unauthorized", 401);
+  const db = getDb(c.env.DATABASE_URL);
+  const stats = await computeOverallStats(db, accountId);
+  return c.json(stats);
+});
+
+// GET /api/me/joinable-sessions -- active sessions, with a player count and whether
+// this account has already requested/joined each one.
+app.get("/api/me/joinable-sessions", async (c) => {
+  const secret = playerAuthSecret(c.env);
+  const accountId = secret ? await requirePlayer(c.req.raw, secret) : null;
+  if (!accountId) return c.text("Unauthorized", 401);
+  const db = getDb(c.env.DATABASE_URL);
+  const activeSessions = await db.select().from(sessions).where(eq(sessions.status, "active"));
+  const myRows = await db.select().from(players).where(eq(players.accountId, accountId));
+  const myBySession = new Map(myRows.map((p) => [p.sessionId, p]));
+
+  const result = [];
+  for (const s of activeSessions) {
+    const sessionPlayers = await db.select().from(players).where(eq(players.sessionId, s.id));
+    const approvedCount = sessionPlayers.filter((p) => p.approved).length;
+    const mine = myBySession.get(s.id);
+    result.push({
+      id: s.id,
+      name: s.name,
+      playerCount: approvedCount,
+      alreadyJoined: !!mine,
+      approved: mine?.approved ?? false,
+    });
+  }
+  return c.json(result);
+});
+
+// POST /api/me/change-password
+app.post("/api/me/change-password", async (c) => {
+  const secret = playerAuthSecret(c.env);
+  const accountId = secret ? await requirePlayer(c.req.raw, secret) : null;
+  if (!accountId) return c.text("Unauthorized", 401);
+  const db = getDb(c.env.DATABASE_URL);
+  const body = await c.req.json().catch(() => ({}));
+  const currentPassword = String(body.currentPassword || "");
+  const newPassword = String(body.newPassword || "");
+  if (newPassword.length < 6) return c.json({ error: "New password must be at least 6 characters" }, 400);
+
+  const [account] = await db.select().from(accounts).where(eq(accounts.id, accountId));
+  if (!account || !(await verifyPassword(currentPassword, account.passwordHash, account.passwordSalt))) {
+    return c.json({ error: "Current password is incorrect" }, 401);
+  }
+  const { hash, salt } = await hashPassword(newPassword);
+  await db.update(accounts).set({ passwordHash: hash, passwordSalt: salt }).where(eq(accounts.id, accountId));
+  return c.json({ ok: true });
 });
 
 // POST /api/host/registration-token -- host generates a fresh player-registration
