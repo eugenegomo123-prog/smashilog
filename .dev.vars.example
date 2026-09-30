@@ -10,3 +10,7 @@ DATABASE_URL="postgresql://user:password@host/dbname?sslmode=require"
 
 # Shared password for host-only actions. Optional -- defaults to "queuemaster" if unset.
 HOST_PASSWORD="queuemaster"
+
+# Signs player-account login tokens and registration QR tokens (upcoming player
+# accounts feature). Not read by any code yet -- safe to add now or later.
+PLAYER_AUTH_SECRET="change-me-to-something-random"
