@@ -99,6 +99,30 @@ export const api = {
   playerUsername: () => localStorage.getItem("smashilog_player_username"),
   createRegistrationQr: () =>
     request<{ token: string; expiresAt: number }>("/host/registration-token", { method: "POST" }),
+  getMe: () =>
+    request<{
+      username: string;
+      activeParticipation: { sessionId: number; sessionName: string; approved: boolean } | null;
+    }>("/me"),
+  getOverallStats: () =>
+    request<{
+      sessionsPlayed: number;
+      gamesPlayed: number;
+      wins: number;
+      losses: number;
+      pointsFor: number;
+      averageScore: number;
+      highestScore: number;
+    }>("/me/stats"),
+  getJoinableSessions: () =>
+    request<{ id: number; name: string; playerCount: number; alreadyJoined: boolean; approved: boolean }[]>(
+      "/me/joinable-sessions",
+    ),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    request<{ ok: true }>("/me/change-password", {
+      method: "POST",
+      body: JSON.stringify({ currentPassword, newPassword }),
+    }),
   getMyPlayerInSession: (sessionId: number) =>
     request<{ player: Player | null }>(`/sessions/${sessionId}/my-player`).then((r) => r.player),
   requestToJoinAsAccount: (sessionId: number, requestedLevel: Level) =>
