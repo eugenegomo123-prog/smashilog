@@ -502,6 +502,22 @@ table.ranking th {
   background: linear-gradient(160deg, #f3cd9e, #d6924f);
 }
 
+.host-corner-link {
+  position: fixed;
+  right: calc(16px + env(safe-area-inset-right));
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: 0 2px 8px rgba(180, 140, 20, 0.12);
+  z-index: 5;
+}
+
 .empty-state {
   color: var(--muted);
   text-align: center;
