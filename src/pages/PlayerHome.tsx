@@ -24,6 +24,9 @@ export default function PlayerHome() {
       <p className="subtitle">
         Your overall stats, ranking, and match history are coming here soon — this account is ready to go.
       </p>
+      <button className="btn primary" style={{ marginBottom: 12 }} onClick={() => navigate("/join")}>
+        Join a session
+      </button>
       <button
         className="btn danger"
         onClick={() => {
