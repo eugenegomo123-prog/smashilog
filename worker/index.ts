@@ -1,8 +1,10 @@
 import { Hono } from "hono";
 import { desc, eq } from "drizzle-orm";
 import { getDb } from "../db";
-import { matches, players, sessions } from "../db/schema";
+import { accounts, matches, players, sessions } from "../db/schema";
 import { createHostToken, requireHost } from "./lib/auth";
+import { createPlayerToken, createRegistrationToken, verifyRegistrationToken } from "./lib/playerAuth";
+import { hashPassword, verifyPassword } from "./lib/passwords";
 import { regenerateQueue } from "./lib/regenerate";
 import { fillOpenCourtsFromQueue, nextQueuePosition, MAX_QUEUE_LENGTH } from "./lib/queue";
 import { playerIdsUnavailable, recomputeSessionStats } from "./lib/stats";
@@ -12,17 +14,24 @@ import { playerIdsUnavailable, recomputeSessionStats } from "./lib/stats";
 type Bindings = {
   DATABASE_URL: string;
   HOST_PASSWORD?: string;
+  PLAYER_AUTH_SECRET?: string;
   ASSETS: Fetcher;
 };
 
 const LEVELS = ["A", "B", "C", "D", "E"];
 const STATUSES = ["active", "resting", "inactive"];
-const PLAYING_MODES = ["competitive", "chill"];
 
 const app = new Hono<{ Bindings: Bindings }>();
 
 function hostSecret(env: Bindings): string {
   return env.HOST_PASSWORD || "queuemaster";
+}
+
+// Unlike hostSecret, this has no guessable fallback -- a forged registration token
+// would let someone create accounts without ever scanning a real host's QR code,
+// so these endpoints refuse to run until a real secret is set.
+function playerAuthSecret(env: Bindings): string | null {
+  return env.PLAYER_AUTH_SECRET || null;
 }
 
 // POST /api/host-auth
@@ -33,6 +42,76 @@ app.post("/api/host-auth", async (c) => {
     return c.json({ error: "Incorrect password" }, 401);
   }
   return c.json({ token: await createHostToken(expected) });
+});
+
+// POST /api/register -- create a player account. Requires a valid registration
+// token, proving it came from a host's QR code.
+app.post("/api/register", async (c) => {
+  const db = getDb(c.env.DATABASE_URL);
+  const secret = playerAuthSecret(c.env);
+  if (!secret) return c.json({ error: "Player accounts aren't set up yet on this server." }, 500);
+
+  const body = await c.req.json().catch(() => ({}));
+  const token = String(body.token || "");
+  const username = String(body.username || "").trim();
+  const password = String(body.password || "");
+
+  if (!(await verifyRegistrationToken(token, secret))) {
+    return c.json(
+      { error: "This registration link is invalid or has expired -- ask your host for a new QR code." },
+      400,
+    );
+  }
+  if (username.length < 3 || username.length > 30) {
+    return c.json({ error: "Username must be 3-30 characters" }, 400);
+  }
+  if (password.length < 6) {
+    return c.json({ error: "Password must be at least 6 characters" }, 400);
+  }
+
+  const [existing] = await db.select().from(accounts).where(eq(accounts.username, username));
+  if (existing) {
+    return c.json({ error: "That username is already taken" }, 400);
+  }
+
+  const { hash, salt } = await hashPassword(password);
+  const [created] = await db
+    .insert(accounts)
+    .values({ username, passwordHash: hash, passwordSalt: salt })
+    .returning();
+
+  const playerToken = await createPlayerToken(created.id, secret);
+  return c.json({ token: playerToken, username: created.username }, 201);
+});
+
+// POST /api/login
+app.post("/api/login", async (c) => {
+  const db = getDb(c.env.DATABASE_URL);
+  const secret = playerAuthSecret(c.env);
+  if (!secret) return c.json({ error: "Player accounts aren't set up yet on this server." }, 500);
+
+  const body = await c.req.json().catch(() => ({}));
+  const username = String(body.username || "").trim();
+  const password = String(body.password || "");
+
+  const [account] = await db.select().from(accounts).where(eq(accounts.username, username));
+  if (!account || !(await verifyPassword(password, account.passwordHash, account.passwordSalt))) {
+    return c.json({ error: "Incorrect username or password" }, 401);
+  }
+
+  const playerToken = await createPlayerToken(account.id, secret);
+  return c.json({ token: playerToken, username: account.username });
+});
+
+// POST /api/host/registration-token -- host generates a fresh player-registration
+// QR token (24h expiry). Not tied to any one session.
+app.post("/api/host/registration-token", async (c) => {
+  if (!(await requireHost(c.req.raw, hostSecret(c.env)))) return c.text("Unauthorized", 401);
+  const secret = playerAuthSecret(c.env);
+  if (!secret) return c.json({ error: "Player accounts aren't set up yet on this server." }, 500);
+  const token = await createRegistrationToken(secret);
+  const expiresAt = Number(token.split(".")[0]);
+  return c.json({ token, expiresAt });
 });
 
 // GET/POST /api/sessions
