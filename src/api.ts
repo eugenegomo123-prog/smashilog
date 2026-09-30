@@ -50,11 +50,17 @@ function hostToken(): string | null {
   return localStorage.getItem("smashilog_host_token");
 }
 
+function playerToken(): string | null {
+  return localStorage.getItem("smashilog_player_token");
+}
+
 async function request<T>(path: string, opts: RequestInit = {}): Promise<T> {
   const headers = new Headers(opts.headers);
   headers.set("Content-Type", "application/json");
   const token = hostToken();
   if (token) headers.set("x-host-token", token);
+  const pToken = playerToken();
+  if (pToken) headers.set("x-player-token", pToken);
   const res = await fetch(`/api${path}`, { ...opts, headers });
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }));
@@ -70,6 +76,29 @@ export const api = {
   setHostToken: (token: string) => localStorage.setItem("smashilog_host_token", token),
   clearHostToken: () => localStorage.removeItem("smashilog_host_token"),
   isHost: () => !!hostToken(),
+
+  register: (username: string, password: string, token: string) =>
+    request<{ token: string; username: string }>("/register", {
+      method: "POST",
+      body: JSON.stringify({ username, password, token }),
+    }),
+  login: (username: string, password: string) =>
+    request<{ token: string; username: string }>("/login", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    }),
+  setPlayerSession: (token: string, username: string) => {
+    localStorage.setItem("smashilog_player_token", token);
+    localStorage.setItem("smashilog_player_username", username);
+  },
+  clearPlayerSession: () => {
+    localStorage.removeItem("smashilog_player_token");
+    localStorage.removeItem("smashilog_player_username");
+  },
+  isPlayerLoggedIn: () => !!playerToken(),
+  playerUsername: () => localStorage.getItem("smashilog_player_username"),
+  createRegistrationQr: () =>
+    request<{ token: string; expiresAt: number }>("/host/registration-token", { method: "POST" }),
 
   listSessions: () => request<Session[]>("/sessions"),
   createSession: (name: string, courtCount: number) =>
