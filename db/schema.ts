@@ -9,6 +9,16 @@ import {
   serial,
 } from "drizzle-orm/pg-core";
 
+// A registered player's persistent login. Separate from the single shared host
+// password -- this is per-player, so each person has their own username/password.
+export const accounts = pgTable("accounts", {
+  id: serial().primaryKey(),
+  username: text().notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  passwordSalt: text("password_salt").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const sessions = pgTable("sessions", {
   id: serial().primaryKey(),
   name: text().notNull(),
