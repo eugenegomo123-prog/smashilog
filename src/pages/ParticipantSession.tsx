@@ -122,7 +122,17 @@ export default function ParticipantSession() {
   const wasOnCourt = useRef(false);
   const lastThreshold = useRef<"none" | "soon" | "next">("none");
 
-  const myId = Number(localStorage.getItem(playerKey(sessionId))) || null;
+  const [myId, setMyId] = useState<number | null>(
+    () => Number(localStorage.getItem(playerKey(sessionId))) || null,
+  );
+
+  useEffect(() => {
+    if (!api.isPlayerLoggedIn()) return;
+    api.getMyPlayerInSession(sessionId).then((p) => {
+      if (p) setMyId(p.id);
+    });
+  }, [sessionId]);
+
   const isEnded = session?.status === "ended";
   const [tab, setTab] = useState<Tab>(isEnded ? "ranking" : "dashboard");
 
