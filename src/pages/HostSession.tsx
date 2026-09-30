@@ -1121,6 +1121,10 @@ function SettingsTab({ session, onChanged }: { session: Session; onChanged: () =
   const joinUrl = `${window.location.origin}/join/${session.id}`;
   const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(joinUrl)}`;
 
+  const [regQr, setRegQr] = useState<{ url: string; expiresAt: number } | null>(null);
+  const [regLoading, setRegLoading] = useState(false);
+  const [regError, setRegError] = useState("");
+
   async function copyLink() {
     try {
       await navigator.clipboard.writeText(joinUrl);
@@ -1131,8 +1135,52 @@ function SettingsTab({ session, onChanged }: { session: Session; onChanged: () =
     }
   }
 
+  async function generateRegQr() {
+    setRegLoading(true);
+    setRegError("");
+    try {
+      const { token, expiresAt } = await api.createRegistrationQr();
+      const url = `${window.location.origin}/register?token=${encodeURIComponent(token)}`;
+      setRegQr({ url, expiresAt });
+    } catch (err) {
+      setRegError(err instanceof Error ? err.message : "Could not generate a registration code");
+    } finally {
+      setRegLoading(false);
+    }
+  }
+
   return (
     <div className="stack">
+      <div className="card" style={{ textAlign: "center" }}>
+        <label style={{ textAlign: "left" }}>Player registration QR</label>
+        <p className="subtitle" style={{ marginBottom: 10 }}>
+          New players scan this to create their own account (separate from the join link below). Valid 24 hours —
+          regenerate anytime.
+        </p>
+        {regQr ? (
+          <>
+            <img
+              src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(regQr.url)}`}
+              alt="QR code for player registration"
+              width={180}
+              height={180}
+              style={{ borderRadius: 12, margin: "8px auto", display: "block" }}
+            />
+            <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 10 }}>
+              Valid until {new Date(regQr.expiresAt).toLocaleString()}
+            </div>
+          </>
+        ) : (
+          <div className="empty-state" style={{ padding: "12px 0" }}>
+            No active code yet — generate one below.
+          </div>
+        )}
+        {regError && <div className="error-text" style={{ marginBottom: 8 }}>{regError}</div>}
+        <button className="btn small" onClick={generateRegQr} disabled={regLoading}>
+          {regLoading ? "Generating…" : regQr ? "Regenerate" : "Generate code"}
+        </button>
+      </div>
+
       <div className="card" style={{ textAlign: "center" }}>
         <label style={{ textAlign: "left" }}>Join link</label>
         <img
