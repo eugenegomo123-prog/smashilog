@@ -1,9 +1,9 @@
 import { Hono } from "hono";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { getDb } from "../db";
 import { accounts, matches, players, sessions } from "../db/schema";
 import { createHostToken, requireHost } from "./lib/auth";
-import { createPlayerToken, createRegistrationToken, verifyRegistrationToken } from "./lib/playerAuth";
+import { createPlayerToken, createRegistrationToken, requirePlayer, verifyRegistrationToken } from "./lib/playerAuth";
 import { hashPassword, verifyPassword } from "./lib/passwords";
 import { regenerateQueue } from "./lib/regenerate";
 import { fillOpenCourtsFromQueue, nextQueuePosition, MAX_QUEUE_LENGTH } from "./lib/queue";
@@ -195,10 +195,40 @@ app.post("/api/sessions/:id/players", async (c) => {
   if (!Number.isFinite(sessionId)) return c.text("Invalid session id", 400);
   const db = getDb(c.env.DATABASE_URL);
   const body = await c.req.json().catch(() => ({}));
-  const name = String(body.name || "").trim();
-  if (!name) return c.json({ error: "Name is required" }, 400);
   const isHost = await requireHost(c.req.raw, hostSecret(c.env));
   const requestedLevel = LEVELS.includes(body.requestedLevel) ? body.requestedLevel : "C";
+
+  // Registered-player path: identified by their account token, not a typed name.
+  const secret = playerAuthSecret(c.env);
+  const accountId = !isHost && secret ? await requirePlayer(c.req.raw, secret) : null;
+  if (accountId) {
+    const [existingRow] = await db
+      .select()
+      .from(players)
+      .where(and(eq(players.sessionId, sessionId), eq(players.accountId, accountId)));
+    if (existingRow) return c.json(existingRow, 200);
+
+    const [account] = await db.select().from(accounts).where(eq(accounts.id, accountId));
+    if (!account) return c.json({ error: "Account not found" }, 404);
+
+    const [created] = await db
+      .insert(players)
+      .values({
+        sessionId,
+        name: account.username,
+        level: "C",
+        requestedLevel,
+        approved: false,
+        status: "active",
+        accountId,
+      })
+      .returning();
+    return c.json(created, 201);
+  }
+
+  // Existing guest / host-adds-player path, unchanged.
+  const name = String(body.name || "").trim();
+  if (!name) return c.json({ error: "Name is required" }, 400);
 
   const [created] = await db
     .insert(players)
@@ -212,6 +242,23 @@ app.post("/api/sessions/:id/players", async (c) => {
     })
     .returning();
   return c.json(created, 201);
+});
+
+// GET /api/sessions/:id/my-player -- does the logged-in account already have a
+// player row in this session? Used to resume across devices instead of guessing
+// from browser storage.
+app.get("/api/sessions/:id/my-player", async (c) => {
+  const sessionId = Number(c.req.param("id"));
+  if (!Number.isFinite(sessionId)) return c.text("Invalid session id", 400);
+  const secret = playerAuthSecret(c.env);
+  const accountId = secret ? await requirePlayer(c.req.raw, secret) : null;
+  if (!accountId) return c.json({ player: null });
+  const db = getDb(c.env.DATABASE_URL);
+  const [player] = await db
+    .select()
+    .from(players)
+    .where(and(eq(players.sessionId, sessionId), eq(players.accountId, accountId)));
+  return c.json({ player: player ?? null });
 });
 
 // GET /api/sessions/:id/matches
