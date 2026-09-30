@@ -49,6 +49,9 @@ export const players = pgTable("players", {
   // No DB foreign key, to keep a self-referencing column simple -- validated in the
   // API layer instead (must be an approved player in the same session).
   preferredPartnerId: integer("preferred_partner_id"),
+  // Set when this player row belongs to a registered account rather than a guest.
+  // Guests (today's flow) leave this null, unchanged.
+  accountId: integer("account_id").references(() => accounts.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
