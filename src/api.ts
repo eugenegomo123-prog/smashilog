@@ -99,6 +99,13 @@ export const api = {
   playerUsername: () => localStorage.getItem("smashilog_player_username"),
   createRegistrationQr: () =>
     request<{ token: string; expiresAt: number }>("/host/registration-token", { method: "POST" }),
+  getMyPlayerInSession: (sessionId: number) =>
+    request<{ player: Player | null }>(`/sessions/${sessionId}/my-player`).then((r) => r.player),
+  requestToJoinAsAccount: (sessionId: number, requestedLevel: Level) =>
+    request<Player>(`/sessions/${sessionId}/players`, {
+      method: "POST",
+      body: JSON.stringify({ requestedLevel }),
+    }),
 
   listSessions: () => request<Session[]>("/sessions"),
   createSession: (name: string, courtCount: number) =>
