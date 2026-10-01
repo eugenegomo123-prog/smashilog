@@ -123,6 +123,46 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ currentPassword, newPassword }),
     }),
+  getMyHistory: () =>
+    request<
+      {
+        sessionId: number;
+        sessionName: string;
+        endedAt: string | null;
+        createdAt: string;
+        gamesPlayed: number;
+        pointsFor: number;
+        wins: number;
+        losses: number;
+        rank: number;
+        totalRanked: number;
+      }[]
+    >("/me/history"),
+  getSessionDetail: (sessionId: number) =>
+    request<{
+      session: { id: number; name: string; status: string; endedAt: string | null; createdAt: string };
+      myStats: {
+        gamesPlayed: number;
+        wins: number;
+        losses: number;
+        pointsFor: number;
+        pointsAgainst: number;
+        rank: number;
+        totalRanked: number;
+        level: string;
+      };
+      ranking: { name: string; level: string; wins: number; losses: number; gamesPlayed: number }[];
+      matches: {
+        id: number;
+        courtLabel: string;
+        teammateNames: string[];
+        opponentNames: string[];
+        myScore: number;
+        opponentScore: number;
+        won: boolean;
+        endedAt: string | null;
+      }[];
+    }>(`/me/history/${sessionId}`),
   getOverallRanking: (scope: string) =>
     request<{
       scope: string;
