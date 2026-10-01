@@ -325,9 +325,13 @@ app.post("/api/sessions/:id/players", async (c) => {
   const isHost = await requireHost(c.req.raw, hostSecret(c.env));
   const requestedLevel = LEVELS.includes(body.requestedLevel) ? body.requestedLevel : "C";
 
-  // Registered-player path: identified by their account token, not a typed name.
+  // Registered-player path: identified by a valid player token *and* no typed name
+  // in the body -- that's how the account-based "request to join" call always
+  // works. Checked independently of isHost, since the same browser could be
+  // logged in as both host and a personal player account.
+  const typedName = typeof body.name === "string" ? body.name.trim() : "";
   const secret = playerAuthSecret(c.env);
-  const accountId = !isHost && secret ? await requirePlayer(c.req.raw, secret) : null;
+  const accountId = !typedName && secret ? await requirePlayer(c.req.raw, secret) : null;
   if (accountId) {
     const [existingRow] = await db
       .select()
@@ -354,7 +358,7 @@ app.post("/api/sessions/:id/players", async (c) => {
   }
 
   // Existing guest / host-adds-player path, unchanged.
-  const name = String(body.name || "").trim();
+  const name = typedName;
   if (!name) return c.json({ error: "Name is required" }, 400);
 
   const [created] = await db
