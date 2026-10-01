@@ -123,6 +123,19 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ currentPassword, newPassword }),
     }),
+  getOverallRanking: (scope: string) =>
+    request<{
+      scope: string;
+      entries: {
+        accountId: number;
+        username: string;
+        gamesPlayed: number;
+        wins: number;
+        losses: number;
+        pointsFor: number;
+        pointsAgainst: number;
+      }[];
+    }>(`/me/ranking?scope=${encodeURIComponent(scope)}`).then((r) => r.entries),
   getMyPlayerInSession: (sessionId: number) =>
     request<{ player: Player | null }>(`/sessions/${sessionId}/my-player`).then((r) => r.player),
   requestToJoinAsAccount: (sessionId: number, requestedLevel: Level) =>
