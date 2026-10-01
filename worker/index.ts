@@ -4,7 +4,14 @@ import { getDb } from "../db";
 import { accounts, matches, players, sessions } from "../db/schema";
 import { createHostToken, requireHost } from "./lib/auth";
 import { createPlayerToken, createRegistrationToken, requirePlayer, verifyRegistrationToken } from "./lib/playerAuth";
-import { computeAllTimeRanking, computeMonthRanking, computeOverallStats, rankAccounts } from "./lib/accountStats";
+import {
+  computeAllTimeRanking,
+  computeMonthRanking,
+  computeOverallStats,
+  computeSessionDetail,
+  computeSessionHistory,
+  rankAccounts,
+} from "./lib/accountStats";
 import { hashPassword, verifyPassword } from "./lib/passwords";
 import { regenerateQueue } from "./lib/regenerate";
 import { fillOpenCourtsFromQueue, nextQueuePosition, MAX_QUEUE_LENGTH } from "./lib/queue";
@@ -152,6 +159,29 @@ app.get("/api/me/ranking", async (c) => {
   const db = getDb(c.env.DATABASE_URL);
   const entries = scope === "all" ? await computeAllTimeRanking(db) : await computeMonthRanking(db, scope);
   return c.json({ scope, entries: rankAccounts(entries) });
+});
+
+// GET /api/me/history -- every session this account has played, most recent first.
+app.get("/api/me/history", async (c) => {
+  const secret = playerAuthSecret(c.env);
+  const accountId = secret ? await requirePlayer(c.req.raw, secret) : null;
+  if (!accountId) return c.text("Unauthorized", 401);
+  const db = getDb(c.env.DATABASE_URL);
+  const history = await computeSessionHistory(db, accountId);
+  return c.json(history);
+});
+
+// GET /api/me/history/:sessionId -- detail view for one past (or current) session.
+app.get("/api/me/history/:sessionId", async (c) => {
+  const secret = playerAuthSecret(c.env);
+  const accountId = secret ? await requirePlayer(c.req.raw, secret) : null;
+  if (!accountId) return c.text("Unauthorized", 401);
+  const sessionId = Number(c.req.param("sessionId"));
+  if (!Number.isFinite(sessionId)) return c.text("Invalid session id", 400);
+  const db = getDb(c.env.DATABASE_URL);
+  const detail = await computeSessionDetail(db, accountId, sessionId);
+  if (!detail) return c.text("Not found", 404);
+  return c.json(detail);
 });
 
 // GET /api/me/joinable-sessions -- active sessions, with a player count and whether
