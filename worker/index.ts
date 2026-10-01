@@ -4,7 +4,7 @@ import { getDb } from "../db";
 import { accounts, matches, players, sessions } from "../db/schema";
 import { createHostToken, requireHost } from "./lib/auth";
 import { createPlayerToken, createRegistrationToken, requirePlayer, verifyRegistrationToken } from "./lib/playerAuth";
-import { computeOverallStats } from "./lib/accountStats";
+import { computeAllTimeRanking, computeMonthRanking, computeOverallStats, rankAccounts } from "./lib/accountStats";
 import { hashPassword, verifyPassword } from "./lib/passwords";
 import { regenerateQueue } from "./lib/regenerate";
 import { fillOpenCourtsFromQueue, nextQueuePosition, MAX_QUEUE_LENGTH } from "./lib/queue";
@@ -138,6 +138,20 @@ app.get("/api/me/stats", async (c) => {
   const db = getDb(c.env.DATABASE_URL);
   const stats = await computeOverallStats(db, accountId);
   return c.json(stats);
+});
+
+// GET /api/me/ranking?scope=all|YYYY-MM -- cross-account leaderboard.
+app.get("/api/me/ranking", async (c) => {
+  const secret = playerAuthSecret(c.env);
+  const accountId = secret ? await requirePlayer(c.req.raw, secret) : null;
+  if (!accountId) return c.text("Unauthorized", 401);
+  const scope = c.req.query("scope") || "all";
+  if (scope !== "all" && !/^\d{4}-\d{2}$/.test(scope)) {
+    return c.json({ error: 'scope must be "all" or "YYYY-MM"' }, 400);
+  }
+  const db = getDb(c.env.DATABASE_URL);
+  const entries = scope === "all" ? await computeAllTimeRanking(db) : await computeMonthRanking(db, scope);
+  return c.json({ scope, entries: rankAccounts(entries) });
 });
 
 // GET /api/me/joinable-sessions -- active sessions, with a player count and whether
