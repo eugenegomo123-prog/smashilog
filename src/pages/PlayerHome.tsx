@@ -47,7 +47,7 @@ export default function PlayerHome() {
       </div>
 
       {tab === "stats" && <StatsTab />}
-      {tab === "ranking" && <ComingSoon label="Overall ranking" />}
+      {tab === "ranking" && <RankingTab />}
       {tab === "history" && <ComingSoon label="Session history" />}
       {tab === "account" && <AccountTab />}
 
@@ -63,6 +63,82 @@ export default function PlayerHome() {
 
 function ComingSoon({ label }: { label: string }) {
   return <div className="empty-state">{label} is coming soon.</div>;
+}
+
+interface AccountRankEntry {
+  accountId: number;
+  username: string;
+  gamesPlayed: number;
+  wins: number;
+  losses: number;
+  pointsFor: number;
+  pointsAgainst: number;
+}
+
+function RankingTab() {
+  const [scope, setScope] = useState<string>("all");
+  const [entries, setEntries] = useState<AccountRankEntry[] | null>(null);
+  const me = api.playerUsername();
+  const currentMonth = new Date().toISOString().slice(0, 7);
+
+  useEffect(() => {
+    setEntries(null);
+    api.getOverallRanking(scope).then(setEntries);
+  }, [scope]);
+
+  return (
+    <div>
+      <div className="row" style={{ marginBottom: 16 }}>
+        <button className={`btn ${scope === "all" ? "primary" : ""}`} onClick={() => setScope("all")}>
+          All Time
+        </button>
+        <input
+          type="month"
+          value={scope !== "all" ? scope : ""}
+          max={currentMonth}
+          onChange={(e) => e.target.value && setScope(e.target.value)}
+        />
+      </div>
+
+      {entries === null && <div className="empty-state">Loading…</div>}
+      {entries && entries.length === 0 && (
+        <div className="empty-state">No games played {scope === "all" ? "yet" : "in that month"}.</div>
+      )}
+      {entries && entries.length > 0 && (
+        <div className="table-wrap">
+          <table className="ranking">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Player</th>
+                <th>W-L</th>
+                <th>Win%</th>
+                <th>Diff</th>
+              </tr>
+            </thead>
+            <tbody>
+              {entries.map((e, i) => {
+                const winPct = e.gamesPlayed ? Math.round((e.wins / e.gamesPlayed) * 100) : 0;
+                const avgDiff = e.gamesPlayed ? (e.pointsFor - e.pointsAgainst) / e.gamesPlayed : 0;
+                const isMe = e.username === me;
+                return (
+                  <tr key={e.accountId} style={isMe ? { background: "var(--panel-2)", fontWeight: 700 } : undefined}>
+                    <td>{i + 1}</td>
+                    <td>{e.username}{isMe ? " (you)" : ""}</td>
+                    <td>{e.wins}-{e.losses}</td>
+                    <td>{winPct}%</td>
+                    <td style={{ color: avgDiff > 0 ? "var(--good)" : avgDiff < 0 ? "var(--bad)" : "var(--muted)" }}>
+                      {avgDiff > 0 ? `+${avgDiff.toFixed(1)}` : avgDiff.toFixed(1)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function StatsTab() {
