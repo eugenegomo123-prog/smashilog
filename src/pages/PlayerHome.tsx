@@ -48,7 +48,7 @@ export default function PlayerHome() {
 
       {tab === "stats" && <StatsTab />}
       {tab === "ranking" && <RankingTab />}
-      {tab === "history" && <ComingSoon label="Session history" />}
+      {tab === "history" && <HistoryTab />}
       {tab === "account" && <AccountTab />}
 
       <nav className="tabs">
@@ -223,6 +223,128 @@ function StatsTab() {
           </div>
         ))}
         {sessionsList?.length === 0 && <div className="empty-state">No active sessions right now.</div>}
+      </div>
+    </div>
+  );
+}
+
+function HistoryTab() {
+  const [history, setHistory] = useState<Awaited<ReturnType<typeof api.getMyHistory>> | null>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+
+  useEffect(() => {
+    api.getMyHistory().then(setHistory);
+  }, []);
+
+  if (selectedId) return <SessionDetailView sessionId={selectedId} onBack={() => setSelectedId(null)} />;
+  if (history === null) return <div className="empty-state">Loading…</div>;
+  if (history.length === 0) return <div className="empty-state">No past sessions yet.</div>;
+
+  return (
+    <div className="stack">
+      {history.map((h) => (
+        <div
+          key={h.sessionId}
+          className="card row between"
+          style={{ cursor: "pointer" }}
+          onClick={() => setSelectedId(h.sessionId)}
+        >
+          <div>
+            <div style={{ fontWeight: 600 }}>{h.sessionName}</div>
+            <div style={{ fontSize: 12, color: "var(--muted)" }}>
+              {new Date(h.endedAt ?? h.createdAt).toLocaleDateString()} · {h.gamesPlayed} games · {h.pointsFor} pts
+            </div>
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <div style={{ fontWeight: 700 }}>{h.rank > 0 ? `#${h.rank}` : "—"}</div>
+            {h.rank > 0 && <div style={{ fontSize: 11, color: "var(--muted)" }}>of {h.totalRanked}</div>}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SessionDetailView({ sessionId, onBack }: { sessionId: number; onBack: () => void }) {
+  const [detail, setDetail] = useState<Awaited<ReturnType<typeof api.getSessionDetail>> | null>(null);
+
+  useEffect(() => {
+    setDetail(null);
+    api.getSessionDetail(sessionId).then(setDetail);
+  }, [sessionId]);
+
+  if (!detail) return <div className="empty-state">Loading…</div>;
+
+  return (
+    <div>
+      <button
+        className="back-link"
+        style={{ background: "none", border: "none", padding: 0, cursor: "pointer", font: "inherit" }}
+        onClick={onBack}
+      >
+        ← All sessions
+      </button>
+      <h3 style={{ fontSize: 18, marginTop: 8, marginBottom: 2 }}>{detail.session.name}</h3>
+      <p className="subtitle">
+        {new Date(detail.session.endedAt ?? detail.session.createdAt).toLocaleDateString()} ·{" "}
+        {detail.session.status === "ended" ? "Ended" : "Active"}
+      </p>
+
+      <div className="card">
+        <div className="row between" style={{ marginBottom: 6 }}>
+          <span>Your record</span>
+          <strong>{detail.myStats.wins}-{detail.myStats.losses}</strong>
+        </div>
+        <div className="row between" style={{ marginBottom: 6 }}>
+          <span>Points for / against</span>
+          <strong>{detail.myStats.pointsFor} / {detail.myStats.pointsAgainst}</strong>
+        </div>
+        <div className="row between">
+          <span>Rank</span>
+          <strong>{detail.myStats.rank > 0 ? `#${detail.myStats.rank} of ${detail.myStats.totalRanked}` : "Unranked"}</strong>
+        </div>
+      </div>
+
+      <h3 style={{ fontSize: 15, color: "var(--muted)", marginTop: 20 }}>Final standings</h3>
+      <div className="table-wrap">
+        <table className="ranking">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Player</th>
+              <th>W-L</th>
+            </tr>
+          </thead>
+          <tbody>
+            {detail.ranking.map((p, i) => (
+              <tr key={i}>
+                <td>{i + 1}</td>
+                <td>{p.name}</td>
+                <td>{p.wins}-{p.losses}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <h3 style={{ fontSize: 15, color: "var(--muted)", marginTop: 20 }}>Your matches</h3>
+      <div className="stack">
+        {detail.matches.map((m) => (
+          <div key={m.id} className="match-card">
+            <div className="court-label">
+              {m.courtLabel} · {m.endedAt ? new Date(m.endedAt).toLocaleString() : ""}
+            </div>
+            <div className="team-row">
+              <span>You{m.teammateNames.length ? ` & ${m.teammateNames.join(" & ")}` : ""}</span>
+              <strong style={{ color: m.won ? "var(--good)" : "var(--bad)" }}>{m.myScore}</strong>
+            </div>
+            <div className="team-row">
+              <span>{m.opponentNames.join(" & ")}</span>
+              <strong>{m.opponentScore}</strong>
+            </div>
+          </div>
+        ))}
+        {detail.matches.length === 0 && <div className="empty-state">No completed matches in this session.</div>}
       </div>
     </div>
   );
