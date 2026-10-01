@@ -1,6 +1,26 @@
 import { eq, inArray } from "drizzle-orm";
 import type { Db } from "../../db";
-import { accounts, matches, players } from "../../db/schema";
+import { accounts, matches, players, sessions } from "../../db/schema";
+
+const LEVELS = ["A", "B", "C", "D", "E"];
+
+// Same ordering as a session's own Ranking tab (win% -> wins -> fewest losses ->
+// avg point diff -> skill level -> name), used here to work out where an account
+// placed in a session they've since left or that has since ended.
+function sessionRankCompare(a: typeof players.$inferSelect, b: typeof players.$inferSelect) {
+  const wpA = a.gamesPlayed ? a.wins / a.gamesPlayed : 0;
+  const wpB = b.gamesPlayed ? b.wins / b.gamesPlayed : 0;
+  if (wpB !== wpA) return wpB - wpA;
+  if (b.wins !== a.wins) return b.wins - a.wins;
+  if (a.losses !== b.losses) return a.losses - b.losses;
+  const diffA = a.gamesPlayed ? (a.pointsFor - a.pointsAgainst) / a.gamesPlayed : 0;
+  const diffB = b.gamesPlayed ? (b.pointsFor - b.pointsAgainst) / b.gamesPlayed : 0;
+  if (diffB !== diffA) return diffB - diffA;
+  const levelA = LEVELS.indexOf(a.level);
+  const levelB = LEVELS.indexOf(b.level);
+  if (levelA !== levelB) return levelA - levelB;
+  return a.name.localeCompare(b.name);
+}
 
 export interface OverallStats {
   sessionsPlayed: number;
@@ -155,4 +175,165 @@ export function rankAccounts(entries: AccountRankEntry[]): AccountRankEntry[] {
     if (diffB !== diffA) return diffB - diffA;
     return a.username.localeCompare(b.username);
   });
+}
+
+export interface SessionHistoryEntry {
+  sessionId: number;
+  sessionName: string;
+  endedAt: string | null;
+  createdAt: string;
+  gamesPlayed: number;
+  pointsFor: number;
+  wins: number;
+  losses: number;
+  rank: number; // 0 means "not ranked" (e.g. was in chill mode that session)
+  totalRanked: number;
+}
+
+// Every session this account has a player row in, most recent first.
+export async function computeSessionHistory(db: Db, accountId: number): Promise<SessionHistoryEntry[]> {
+  const myRows = await db.select().from(players).where(eq(players.accountId, accountId));
+  if (myRows.length === 0) return [];
+
+  const sessionIds = [...new Set(myRows.map((p) => p.sessionId))];
+  const allSessions = await db.select().from(sessions).where(inArray(sessions.id, sessionIds));
+  const sessionById = new Map(allSessions.map((s) => [s.id, s]));
+
+  const entries: SessionHistoryEntry[] = [];
+  for (const myRow of myRows) {
+    const session = sessionById.get(myRow.sessionId);
+    if (!session) continue;
+
+    let rank = 0;
+    let totalRanked = 0;
+    if (myRow.playingMode !== "chill") {
+      const sessionPlayers = await db.select().from(players).where(eq(players.sessionId, myRow.sessionId));
+      const ranked = sessionPlayers.filter((p) => p.approved && p.playingMode !== "chill").sort(sessionRankCompare);
+      totalRanked = ranked.length;
+      rank = ranked.findIndex((p) => p.id === myRow.id) + 1;
+    }
+
+    entries.push({
+      sessionId: session.id,
+      sessionName: session.name,
+      endedAt: session.endedAt ? (session.endedAt as unknown as Date).toISOString() : null,
+      createdAt: (session.createdAt as unknown as Date).toISOString(),
+      gamesPlayed: myRow.gamesPlayed,
+      pointsFor: myRow.pointsFor,
+      wins: myRow.wins,
+      losses: myRow.losses,
+      rank,
+      totalRanked,
+    });
+  }
+
+  entries.sort(
+    (a, b) => new Date(b.endedAt ?? b.createdAt).getTime() - new Date(a.endedAt ?? a.createdAt).getTime(),
+  );
+  return entries;
+}
+
+export interface SessionDetailMatch {
+  id: number;
+  courtLabel: string;
+  teammateNames: string[];
+  opponentNames: string[];
+  myScore: number;
+  opponentScore: number;
+  won: boolean;
+  endedAt: string | null;
+}
+
+export interface SessionDetail {
+  session: { id: number; name: string; status: string; endedAt: string | null; createdAt: string };
+  myStats: {
+    gamesPlayed: number;
+    wins: number;
+    losses: number;
+    pointsFor: number;
+    pointsAgainst: number;
+    rank: number;
+    totalRanked: number;
+    level: string;
+  };
+  ranking: { name: string; level: string; wins: number; losses: number; gamesPlayed: number }[];
+  matches: SessionDetailMatch[];
+}
+
+// Full detail for one session: this account's stats and rank in it, the final
+// standings, and their own match-by-match results.
+export async function computeSessionDetail(
+  db: Db,
+  accountId: number,
+  sessionId: number,
+): Promise<SessionDetail | null> {
+  const [session] = await db.select().from(sessions).where(eq(sessions.id, sessionId));
+  if (!session) return null;
+
+  const sessionPlayers = await db.select().from(players).where(eq(players.sessionId, sessionId));
+  const myRow = sessionPlayers.find((p) => p.accountId === accountId);
+  if (!myRow) return null;
+
+  const nameById = new Map(sessionPlayers.map((p) => [p.id, p.name]));
+  const rankedPool = sessionPlayers.filter((p) => p.approved && p.playingMode !== "chill").sort(sessionRankCompare);
+
+  let rank = 0;
+  if (myRow.playingMode !== "chill") {
+    rank = rankedPool.findIndex((p) => p.id === myRow.id) + 1;
+  }
+
+  const allMatches = await db.select().from(matches).where(eq(matches.sessionId, sessionId));
+  const myMatches: SessionDetailMatch[] = allMatches
+    .filter((m) => m.status === "completed")
+    .filter((m) => (m.team1 as number[]).includes(myRow.id) || (m.team2 as number[]).includes(myRow.id))
+    .sort(
+      (a, b) => new Date(b.endedAt as unknown as string).getTime() - new Date(a.endedAt as unknown as string).getTime(),
+    )
+    .map((m) => {
+      const team1 = m.team1 as number[];
+      const team2 = m.team2 as number[];
+      const onTeam1 = team1.includes(myRow.id);
+      const myTeam = onTeam1 ? team1 : team2;
+      const oppTeam = onTeam1 ? team2 : team1;
+      const myScore = onTeam1 ? m.score1 ?? 0 : m.score2 ?? 0;
+      const opponentScore = onTeam1 ? m.score2 ?? 0 : m.score1 ?? 0;
+      return {
+        id: m.id,
+        courtLabel: m.courtLabel,
+        teammateNames: myTeam.filter((id) => id !== myRow.id).map((id) => nameById.get(id) ?? "?"),
+        opponentNames: oppTeam.map((id) => nameById.get(id) ?? "?"),
+        myScore,
+        opponentScore,
+        won: myScore > opponentScore,
+        endedAt: m.endedAt ? (m.endedAt as unknown as Date).toISOString() : null,
+      };
+    });
+
+  return {
+    session: {
+      id: session.id,
+      name: session.name,
+      status: session.status,
+      endedAt: session.endedAt ? (session.endedAt as unknown as Date).toISOString() : null,
+      createdAt: (session.createdAt as unknown as Date).toISOString(),
+    },
+    myStats: {
+      gamesPlayed: myRow.gamesPlayed,
+      wins: myRow.wins,
+      losses: myRow.losses,
+      pointsFor: myRow.pointsFor,
+      pointsAgainst: myRow.pointsAgainst,
+      rank,
+      totalRanked: rankedPool.length,
+      level: myRow.level,
+    },
+    ranking: rankedPool.map((p) => ({
+      name: p.name,
+      level: p.level,
+      wins: p.wins,
+      losses: p.losses,
+      gamesPlayed: p.gamesPlayed,
+    })),
+    matches: myMatches,
+  };
 }
