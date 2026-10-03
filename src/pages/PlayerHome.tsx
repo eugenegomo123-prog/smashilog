@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
 
 type Tab = "stats" | "ranking" | "history" | "account";
@@ -39,9 +39,9 @@ export default function PlayerHome() {
 
   return (
     <div className="screen">
-      <a className="back-link" href="/">
+      <Link className="back-link" to="/">
         ← Back
-      </a>
+      </Link>
       <div className="brand">
         <h1>Hi, {api.playerUsername()}</h1>
       </div>
