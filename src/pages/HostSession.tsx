@@ -1,6 +1,16 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { api, LEVELS, LEVEL_ICON, LEVEL_LABEL, type Session, type Player, type Match, type Level } from "../api";
+import {
+  api,
+  LEVELS,
+  LEVEL_ICON,
+  LEVEL_LABEL,
+  type Session,
+  type Player,
+  type Match,
+  type Level,
+  type PlayingMode,
+} from "../api";
 
 type Tab = "players" | "courts" | "queue" | "ranking" | "history" | "settings";
 
