@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { api, type Session } from "../api";
 
 export default function HostSessions() {
@@ -41,9 +41,9 @@ export default function HostSessions() {
 
   return (
     <div className="screen">
-      <a className="back-link" href="/">
+      <Link className="back-link" to="/">
         ← Back
-      </a>
+      </Link>
       <div className="brand">
         <h1>Host Sessions</h1>
       </div>
