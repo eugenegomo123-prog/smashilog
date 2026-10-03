@@ -11,7 +11,8 @@
     "deploy": "npm run build && wrangler deploy",
     "cf-typegen": "wrangler types",
     "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "test": "vitest run"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
@@ -32,6 +33,7 @@
     "drizzle-kit": "^1.0.0-rc.4",
     "typescript": "^5.9.3",
     "vite": "^8.3.0",
+    "vitest": "^2.1.9",
     "wrangler": "^4.135.0"
   }
 }
