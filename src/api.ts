@@ -266,13 +266,24 @@ export const LEVEL_LABEL: Record<Level, string> = {
   A: "Roast",
 };
 
-// Purely presentational icon for each rating tier (worker/lib/rating.ts's
-// mmrToTier) -- not used in any rating math, same spirit as LEVEL_ICON above.
-export const TIER_ICON: Record<string, string> = {
-  Fledgling: "🌱",
-  Rally: "🏸",
-  Smash: "💥",
-  Ace: "🎯",
-  Champion: "🏆",
-  Legend: "👑",
+// Rank badge artwork for each rating tier (worker/lib/rating.ts's mmrToTier)
+// -- purely presentational, not used in any rating math, same spirit as
+// LEVEL_ICON above. The art is drawn to glow against a dark background (see
+// .rank-badge-card in styles.css) -- its fine white/gold linework all but
+// disappears on this app's normal light cream cards, so always pair it with
+// that dark backdrop rather than dropping it onto a plain card.
+import fledglingBadge from "./assets/ranks/fledgling.png";
+import rallyBadge from "./assets/ranks/rally.png";
+import smashBadge from "./assets/ranks/smash.png";
+import aceBadge from "./assets/ranks/ace.png";
+import championBadge from "./assets/ranks/champion.png";
+import legendBadge from "./assets/ranks/legend.png";
+
+export const TIER_BADGE_IMAGE: Record<string, string> = {
+  Fledgling: fledglingBadge,
+  Rally: rallyBadge,
+  Smash: smashBadge,
+  Ace: aceBadge,
+  Champion: championBadge,
+  Legend: legendBadge,
 };

@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { api, TIER_ICON } from "../api";
+import { api, TIER_BADGE_IMAGE } from "../api";
 
-type Tab = "stats" | "ranking" | "history" | "account";
+type Tab = "stats" | "rank" | "ranking" | "history" | "account";
 
 interface MeInfo {
   username: string;
@@ -56,12 +56,14 @@ export default function PlayerHome() {
       </div>
 
       {tab === "stats" && <StatsTab />}
+      {tab === "rank" && <RankTab />}
       {tab === "ranking" && <RankingTab />}
       {tab === "history" && <HistoryTab />}
       {tab === "account" && <AccountTab />}
 
       <nav className="tabs">
         <button className={tab === "stats" ? "active" : ""} onClick={() => setTab("stats")}>📊 Stats</button>
+        <button className={tab === "rank" ? "active" : ""} onClick={() => setTab("rank")}>🏅 Rank</button>
         <button className={tab === "ranking" ? "active" : ""} onClick={() => setTab("ranking")}>🏆 Ranking</button>
         <button className={tab === "history" ? "active" : ""} onClick={() => setTab("history")}>📜 History</button>
         <button className={tab === "account" ? "active" : ""} onClick={() => setTab("account")}>⚙️ Account</button>
@@ -154,13 +156,11 @@ function StatsTab() {
   const navigate = useNavigate();
   const [me, setMe] = useState<MeInfo | null>(null);
   const [stats, setStats] = useState<OverallStats | null>(null);
-  const [rating, setRating] = useState<RatingInfo | null>(null);
   const [sessionsList, setSessionsList] = useState<JoinableSession[] | null>(null);
 
   useEffect(() => {
     api.getMe().then(setMe);
     api.getOverallStats().then(setStats);
-    api.getMyRating().then(setRating).catch(() => setRating(null));
     api.getJoinableSessions().then(setSessionsList);
   }, []);
 
@@ -168,32 +168,6 @@ function StatsTab() {
 
   return (
     <div className="stack">
-      {rating && (
-        <div className="card">
-          <div className="row between" style={{ alignItems: "center" }}>
-            <div>
-              <div style={{ fontSize: 13, color: "var(--muted)" }}>Rank</div>
-              <div style={{ fontWeight: 700, fontSize: 20, marginTop: 2 }}>
-                {TIER_ICON[rating.tier] ?? "🏸"} {rating.tier}
-                {rating.division ? ` ${rating.division}` : ""}
-              </div>
-              {rating.provisional && (
-                <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
-                  Still calibrating ({rating.ratedGamesPlayed} rated game{rating.ratedGamesPlayed === 1 ? "" : "s"})
-                </div>
-              )}
-            </div>
-            <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 13, color: "var(--muted)" }}>Season points</div>
-              <div style={{ fontWeight: 700, fontSize: 20 }}>{rating.seasonPoints}</div>
-            </div>
-          </div>
-          {rating.currentRatingStreak >= 3 && (
-            <div style={{ fontSize: 13, marginTop: 8 }}>🔥 {rating.currentRatingStreak} win streak</div>
-          )}
-        </div>
-      )}
-
       {me?.activeParticipation && (
         <div className="card">
           <div style={{ fontSize: 13, color: "var(--muted)" }}>You're in a session right now</div>
@@ -260,6 +234,62 @@ function StatsTab() {
           </div>
         ))}
         {sessionsList?.length === 0 && <div className="empty-state">No active sessions right now.</div>}
+      </div>
+    </div>
+  );
+}
+
+// Dedicated rank/tier tab -- the badge art is drawn to glow on a dark
+// background (see .rank-badge-card in styles.css), so it gets its own big,
+// centered showcase here rather than the small inline card this used to be
+// inside StatsTab.
+function RankTab() {
+  const [rating, setRating] = useState<RatingInfo | null>(null);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    api
+      .getMyRating()
+      .then(setRating)
+      .catch(() => setRating(null))
+      .finally(() => setLoaded(true));
+  }, []);
+
+  if (!loaded) return <div className="empty-state">Loading…</div>;
+
+  if (!rating) {
+    return <div className="empty-state">Play a rated match to earn your first rank badge.</div>;
+  }
+
+  const badgeSrc = TIER_BADGE_IMAGE[rating.tier] ?? TIER_BADGE_IMAGE.Fledgling;
+
+  return (
+    <div className="stack">
+      <div className="rank-badge-card">
+        <img className="rank-badge-image" src={badgeSrc} alt={`${rating.tier} rank badge`} />
+        <div style={{ fontWeight: 800, fontSize: 26, color: "#fff", marginTop: 14 }}>
+          {rating.tier}
+          {rating.division ? ` ${rating.division}` : ""}
+        </div>
+        {rating.provisional && (
+          <div style={{ fontSize: 13, color: "#d8cdbe", marginTop: 4 }}>
+            Still calibrating ({rating.ratedGamesPlayed} rated game{rating.ratedGamesPlayed === 1 ? "" : "s"})
+          </div>
+        )}
+        {rating.currentRatingStreak >= 3 && (
+          <div style={{ fontSize: 14, marginTop: 10, color: "#ffd27a" }}>
+            🔥 {rating.currentRatingStreak} win streak
+          </div>
+        )}
+      </div>
+
+      <div className="card row between">
+        <span>Season points</span>
+        <strong>{rating.seasonPoints}</strong>
+      </div>
+      <div className="card row between">
+        <span>Rated games played</span>
+        <strong>{rating.ratedGamesPlayed}</strong>
       </div>
     </div>
   );
