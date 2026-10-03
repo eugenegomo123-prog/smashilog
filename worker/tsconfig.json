@@ -11,5 +11,6 @@
     "isolatedModules": true,
     "noEmit": true
   },
-  "include": ["./**/*.ts", "../db/**/*.ts"]
+  "include": ["./**/*.ts", "../db/**/*.ts"],
+  "exclude": ["./**/*.test.ts"]
 }

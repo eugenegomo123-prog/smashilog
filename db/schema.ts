@@ -16,6 +16,23 @@ export const accounts = pgTable("accounts", {
   username: text().notNull().unique(),
   passwordHash: text("password_hash").notNull(),
   passwordSalt: text("password_salt").notNull(),
+  // --- Rating engine (worker/lib/rating.ts) -- all additive, all default to a
+  // fresh/unrated starting state so existing accounts need no backfill beyond
+  // these defaults. Never written to directly outside worker/lib/ratingIntegration.ts.
+  // `mmr`/`ratingDeviation` are the hidden Elo/Glicko-style numbers; the app only
+  // ever shows the derived tier (see mmrToTier) and seasonPoints, never these raw
+  // values.
+  mmr: real().notNull().default(1000), // rating.ts's BASE_MMR
+  ratingDeviation: real("rating_deviation").notNull().default(350), // rating.ts's RD_START
+  ratedGamesPlayed: integer("rated_games_played").notNull().default(0),
+  seasonPoints: integer("season_points").notNull().default(0),
+  // Consecutive rated wins across all sessions -- separate from a session's own
+  // per-session currentStreak (players.currentStreak), since this one needs to
+  // persist across sessions for the Season Points streak bonus.
+  currentRatingStreak: integer("current_rating_streak").notNull().default(0),
+  // Null until this account's first rated match; used to grow ratingDeviation
+  // (lower confidence) the longer an account goes without a rated match.
+  lastRatedMatchAt: timestamp("last_rated_match_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -68,4 +85,25 @@ export const matches = pgTable("matches", {
   endedAt: timestamp("ended_at"),
   // Only meaningful while status is "queued" -- position in the actual queue (0 = front).
   queuePosition: integer("queue_position"),
+});
+
+// One row per account per rated match -- an audit trail for the rating engine
+// (worker/lib/rating.ts via worker/lib/ratingIntegration.ts), and the raw data
+// a future "rating over time" chart would read. Purely additive: nothing reads
+// this table today except (eventually) such a chart; the live app's behavior
+// doesn't depend on it existing.
+export const ratingHistory = pgTable("rating_history", {
+  id: serial().primaryKey(),
+  accountId: integer("account_id").notNull().references(() => accounts.id),
+  matchId: integer("match_id").notNull().references(() => matches.id),
+  previousMmr: real("previous_mmr").notNull(),
+  newMmr: real("new_mmr").notNull(),
+  mmrChange: real("mmr_change").notNull(),
+  previousRatingDeviation: real("previous_rating_deviation").notNull(),
+  newRatingDeviation: real("new_rating_deviation").notNull(),
+  previousSeasonPoints: integer("previous_season_points").notNull(),
+  newSeasonPoints: integer("new_season_points").notNull(),
+  seasonPointsChange: integer("season_points_change").notNull(),
+  won: boolean().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });

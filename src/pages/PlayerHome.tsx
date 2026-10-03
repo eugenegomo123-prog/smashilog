@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { api } from "../api";
+import { api, TIER_ICON } from "../api";
 
 type Tab = "stats" | "ranking" | "history" | "account";
 
@@ -25,6 +25,15 @@ interface JoinableSession {
   playerCount: number;
   alreadyJoined: boolean;
   approved: boolean;
+}
+
+interface RatingInfo {
+  tier: string;
+  division: "I" | "II" | "III" | null;
+  provisional: boolean;
+  seasonPoints: number;
+  ratedGamesPlayed: number;
+  currentRatingStreak: number;
 }
 
 export default function PlayerHome() {
@@ -145,11 +154,13 @@ function StatsTab() {
   const navigate = useNavigate();
   const [me, setMe] = useState<MeInfo | null>(null);
   const [stats, setStats] = useState<OverallStats | null>(null);
+  const [rating, setRating] = useState<RatingInfo | null>(null);
   const [sessionsList, setSessionsList] = useState<JoinableSession[] | null>(null);
 
   useEffect(() => {
     api.getMe().then(setMe);
     api.getOverallStats().then(setStats);
+    api.getMyRating().then(setRating).catch(() => setRating(null));
     api.getJoinableSessions().then(setSessionsList);
   }, []);
 
@@ -157,6 +168,32 @@ function StatsTab() {
 
   return (
     <div className="stack">
+      {rating && (
+        <div className="card">
+          <div className="row between" style={{ alignItems: "center" }}>
+            <div>
+              <div style={{ fontSize: 13, color: "var(--muted)" }}>Rank</div>
+              <div style={{ fontWeight: 700, fontSize: 20, marginTop: 2 }}>
+                {TIER_ICON[rating.tier] ?? "🏸"} {rating.tier}
+                {rating.division ? ` ${rating.division}` : ""}
+              </div>
+              {rating.provisional && (
+                <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
+                  Still calibrating ({rating.ratedGamesPlayed} rated game{rating.ratedGamesPlayed === 1 ? "" : "s"})
+                </div>
+              )}
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: 13, color: "var(--muted)" }}>Season points</div>
+              <div style={{ fontWeight: 700, fontSize: 20 }}>{rating.seasonPoints}</div>
+            </div>
+          </div>
+          {rating.currentRatingStreak >= 3 && (
+            <div style={{ fontSize: 13, marginTop: 8 }}>🔥 {rating.currentRatingStreak} win streak</div>
+          )}
+        </div>
+      )}
+
       {me?.activeParticipation && (
         <div className="card">
           <div style={{ fontSize: 13, color: "var(--muted)" }}>You're in a session right now</div>

@@ -114,6 +114,15 @@ export const api = {
       averageScore: number;
       highestScore: number;
     }>("/me/stats"),
+  getMyRating: () =>
+    request<{
+      tier: string;
+      division: "I" | "II" | "III" | null;
+      provisional: boolean;
+      seasonPoints: number;
+      ratedGamesPlayed: number;
+      currentRatingStreak: number;
+    }>("/me/rating"),
   getJoinableSessions: () =>
     request<{ id: number; name: string; playerCount: number; alreadyJoined: boolean; approved: boolean }[]>(
       "/me/joinable-sessions",
@@ -255,4 +264,15 @@ export const LEVEL_LABEL: Record<Level, string> = {
   C: "Chick",
   B: "Chicken",
   A: "Roast",
+};
+
+// Purely presentational icon for each rating tier (worker/lib/rating.ts's
+// mmrToTier) -- not used in any rating math, same spirit as LEVEL_ICON above.
+export const TIER_ICON: Record<string, string> = {
+  Fledgling: "🌱",
+  Rally: "🏸",
+  Smash: "💥",
+  Ace: "🎯",
+  Champion: "🏆",
+  Legend: "👑",
 };
