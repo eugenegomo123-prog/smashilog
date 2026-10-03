@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, LEVELS, LEVEL_ICON, LEVEL_LABEL, type Level, type Player, type Session } from "../api";
 
 function playerKey(sessionId: number) {
@@ -71,9 +71,15 @@ export default function ParticipantJoin() {
     }
   }
 
+  const backTo = isLoggedIn ? "/me" : "/join";
+  const backLabel = isLoggedIn ? "← My account" : "← All sessions";
+
   if (requested) {
     return (
       <div className="screen">
+        <Link className="back-link" to={backTo}>
+          {backLabel}
+        </Link>
         <div className="brand">
           <h1>Request sent</h1>
         </div>
@@ -90,9 +96,9 @@ export default function ParticipantJoin() {
   if (isLoggedIn) {
     return (
       <div className="screen">
-        <a className="back-link" href="/me">
+        <Link className="back-link" to="/me">
           ← My account
-        </a>
+        </Link>
         <div className="brand">
           <h1>{session.name}</h1>
         </div>
@@ -126,9 +132,9 @@ export default function ParticipantJoin() {
 
   return (
     <div className="screen">
-      <a className="back-link" href="/join">
+      <Link className="back-link" to="/join">
         ← All sessions
-      </a>
+      </Link>
       <div className="brand">
         <h1>{session.name}</h1>
       </div>
