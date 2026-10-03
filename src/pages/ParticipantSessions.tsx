@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { api, type Session } from "../api";
 
 export default function ParticipantSessions() {
@@ -15,9 +15,9 @@ export default function ParticipantSessions() {
 
   return (
     <div className="screen">
-      <a className="back-link" href="/">
+      <Link className="back-link" to="/">
         ← Back
-      </a>
+      </Link>
       <div className="brand">
         <h1>Join a Session</h1>
       </div>
