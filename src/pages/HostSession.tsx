@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import { api, LEVELS, LEVEL_ICON, LEVEL_LABEL, type Session, type Player, type Match, type Level, type PlayingMode } from "../api";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { api, LEVELS, LEVEL_ICON, LEVEL_LABEL, type Session, type Player, type Match, type Level } from "../api";
 
 type Tab = "players" | "courts" | "queue" | "ranking" | "history" | "settings";
 
@@ -200,9 +200,9 @@ export default function HostSession() {
 
   return (
     <div className="screen">
-      <a className="back-link" href="/host/sessions">
+      <Link className="back-link" to="/host/sessions">
         ← All sessions
-      </a>
+      </Link>
       <div className="brand row between">
         <h1>{session.name}</h1>
         <span className={`badge ${session.status === "active" ? "active" : "ended"}`}>{session.status}</span>
