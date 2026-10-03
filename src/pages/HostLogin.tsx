@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
 
 export default function HostLogin() {
@@ -7,6 +7,10 @@ export default function HostLogin() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (api.isHost()) navigate("/host/sessions");
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
