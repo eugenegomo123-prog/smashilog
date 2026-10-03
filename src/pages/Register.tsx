@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 
 export default function Register() {
@@ -12,15 +12,25 @@ export default function Register() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    if (api.isPlayerLoggedIn()) navigate("/me");
+  }, []);
+
   if (!token) {
     return (
       <div className="screen">
+        <Link className="back-link" to="/">
+          ← Back
+        </Link>
         <div className="brand">
           <h1>Create account</h1>
         </div>
         <p className="subtitle">
           This page needs a registration link from your host's QR code — ask them to show it and scan it with your
           phone's camera.
+        </p>
+        <p className="subtitle">
+          Already have an account? <Link to="/login">Log in</Link> instead.
         </p>
       </div>
     );
@@ -47,6 +57,9 @@ export default function Register() {
 
   return (
     <div className="screen">
+      <Link className="back-link" to="/">
+        ← Back
+      </Link>
       <div className="brand">
         <h1>Create account</h1>
       </div>
@@ -69,6 +82,9 @@ export default function Register() {
           {loading ? "Creating…" : "Create account"}
         </button>
       </form>
+      <p className="subtitle" style={{ marginTop: 24 }}>
+        Already have an account? <Link to="/login">Log in</Link> instead.
+      </p>
     </div>
   );
 }
