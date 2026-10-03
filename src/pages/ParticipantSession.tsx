@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { api, LEVELS, LEVEL_ICON, LEVEL_LABEL, type Level, type Match, type Player, type Session, type PlayingMode } from "../api";
 import { playerKey } from "./ParticipantJoin";
 
@@ -200,9 +200,9 @@ export default function ParticipantSession() {
 
   return (
     <div className="screen">
-      <a className="back-link" href="/join">
-        ← All sessions
-      </a>
+      <Link className="back-link" to={api.isPlayerLoggedIn() ? "/me" : "/join"}>
+        {api.isPlayerLoggedIn() ? "← My account" : "← All sessions"}
+      </Link>
       {toast && <div className="toast">{toast}</div>}
       <div className="brand row between">
         <h1>{session.name}</h1>
