@@ -16,6 +16,7 @@ import { hashPassword, verifyPassword } from "./lib/passwords";
 import { regenerateQueue } from "./lib/regenerate";
 import { fillOpenCourtsFromQueue, nextQueuePosition, MAX_QUEUE_LENGTH } from "./lib/queue";
 import { playerIdsUnavailable, recomputeSessionStats } from "./lib/stats";
+import { rateCompletedMatch, publicRatingView } from "./lib/ratingIntegration";
 
 // Bindings available on `c.env`, set in wrangler.jsonc / as Worker secrets.
 // `ASSETS` is the binding for the static frontend build (see wrangler.jsonc "assets").
@@ -209,6 +210,19 @@ app.get("/api/me/joinable-sessions", async (c) => {
     });
   }
   return c.json(result);
+});
+
+// GET /api/me/rating -- this account's visible tier/rank info. Raw MMR and
+// rating deviation are intentionally never sent to the client (see
+// ratingIntegration.ts's publicRatingView) -- players see a tier, not a number.
+app.get("/api/me/rating", async (c) => {
+  const secret = playerAuthSecret(c.env);
+  const accountId = secret ? await requirePlayer(c.req.raw, secret) : null;
+  if (!accountId) return c.text("Unauthorized", 401);
+  const db = getDb(c.env.DATABASE_URL);
+  const [account] = await db.select().from(accounts).where(eq(accounts.id, accountId));
+  if (!account) return c.text("Not found", 404);
+  return c.json(publicRatingView(account));
 });
 
 // POST /api/me/change-password
@@ -644,6 +658,16 @@ app.patch("/api/matches/:id", async (c) => {
   // A fresh completion frees up a court -- pull the front of the actual queue onto it.
   if (!wasAlreadyCompleted) {
     await fillOpenCourtsFromQueue(db, match.sessionId);
+
+    // Rating engine (additive -- see worker/lib/rating.ts and ratingIntegration.ts).
+    // Only runs on a match's first completion, never on a later score edit, so a
+    // correction never double-applies or un-applies a rating change. Wrapped so a
+    // rating bug can never block the score from being recorded.
+    try {
+      await rateCompletedMatch(db, id);
+    } catch (err) {
+      console.error("Rating engine error (non-fatal, score was still recorded):", err);
+    }
   }
 
   return c.json({ ok: true });
