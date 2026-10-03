@@ -29,9 +29,9 @@ export default function HostLogin() {
 
   return (
     <div className="screen">
-      <a className="back-link" href="/">
+      <Link className="back-link" to="/">
         ← Back
-      </a>
+      </Link>
       <div className="brand">
         <h1>Host Login</h1>
       </div>
