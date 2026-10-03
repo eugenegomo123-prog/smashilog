@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
 
 export default function Login() {
@@ -8,6 +8,10 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (api.isPlayerLoggedIn()) navigate("/me");
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -26,9 +30,9 @@ export default function Login() {
 
   return (
     <div className="screen">
-      <a className="back-link" href="/">
+      <Link className="back-link" to="/">
         ← Back
-      </a>
+      </Link>
       <div className="brand">
         <h1>Login</h1>
       </div>
