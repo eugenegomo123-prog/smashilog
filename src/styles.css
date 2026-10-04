@@ -164,9 +164,10 @@ button, input, select {
 /* Rank badge art (src/assets/ranks/*.png) is drawn to glow against a dark
    background -- on this app's light cream cards its fine white/gold
    linework all but disappears, so it always gets this dark showcase card
-   instead of the plain .card background. */
+   (black center fading to dark brown at the edge) instead of the plain
+   .card background. */
 .rank-badge-card {
-  background: radial-gradient(circle at 50% 32%, #2b241d 0%, #120e0a 72%);
+  background: radial-gradient(circle at 50% 50%, #000000 0%, #000000 35%, #2a1709 75%, #3c230f 100%);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 32px 16px 24px;
