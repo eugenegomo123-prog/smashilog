@@ -15,8 +15,9 @@ interface OverallStats {
   wins: number;
   losses: number;
   pointsFor: number;
-  averageScore: number;
-  highestScore: number;
+  pointsAgainst: number;
+  averagePointDiff: number;
+  highestWinStreak: number;
 }
 
 interface JoinableSession {
@@ -210,12 +211,14 @@ function StatsTab() {
             <strong>{stats.wins}-{stats.losses} ({winPct}%)</strong>
           </div>
           <div className="row between" style={{ marginBottom: 6 }}>
-            <span>Average score</span>
-            <strong>{stats.averageScore.toFixed(1)}</strong>
+            <span>Average point diff</span>
+            <strong style={{ color: stats.averagePointDiff > 0 ? "var(--good)" : stats.averagePointDiff < 0 ? "var(--bad)" : "var(--muted)" }}>
+              {stats.averagePointDiff > 0 ? `+${stats.averagePointDiff.toFixed(1)}` : stats.averagePointDiff.toFixed(1)}
+            </strong>
           </div>
           <div className="row between">
-            <span>Highest score</span>
-            <strong>{stats.highestScore}</strong>
+            <span>Highest win streak</span>
+            <strong>{stats.highestWinStreak}</strong>
           </div>
         </div>
       )}

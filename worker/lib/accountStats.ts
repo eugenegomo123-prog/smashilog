@@ -28,8 +28,9 @@ export interface OverallStats {
   wins: number;
   losses: number;
   pointsFor: number;
-  averageScore: number;
-  highestScore: number;
+  pointsAgainst: number;
+  averagePointDiff: number;
+  highestWinStreak: number;
 }
 
 // Totals across every session this account has a player row in -- guest rows
@@ -42,25 +43,43 @@ export async function computeOverallStats(db: Db, accountId: number): Promise<Ov
   const wins = myRows.reduce((sum, p) => sum + p.wins, 0);
   const losses = myRows.reduce((sum, p) => sum + p.losses, 0);
   const pointsFor = myRows.reduce((sum, p) => sum + p.pointsFor, 0);
-  const averageScore = gamesPlayed > 0 ? pointsFor / gamesPlayed : 0;
+  const pointsAgainst = myRows.reduce((sum, p) => sum + p.pointsAgainst, 0);
+  const averagePointDiff = gamesPlayed > 0 ? (pointsFor - pointsAgainst) / gamesPlayed : 0;
 
-  let highestScore = 0;
+  // Longest run of consecutive wins across this account's whole history, in
+  // chronological order -- continuous across sessions (same spirit as the
+  // rating engine's currentRatingStreak), not reset at a session boundary.
+  let highestWinStreak = 0;
   if (myRows.length > 0) {
     const sessionIds = [...new Set(myRows.map((p) => p.sessionId))];
     const myIdBySession = new Map(myRows.map((p) => [p.sessionId, p.id]));
     const allMatches = await db.select().from(matches).where(inArray(matches.sessionId, sessionIds));
-    for (const m of allMatches) {
-      if (m.status !== "completed") continue;
+    const completed = allMatches
+      .filter((m) => m.status === "completed" && m.endedAt)
+      .sort(
+        (a, b) => new Date(a.endedAt as unknown as string).getTime() - new Date(b.endedAt as unknown as string).getTime(),
+      );
+
+    let currentStreak = 0;
+    for (const m of completed) {
       const myId = myIdBySession.get(m.sessionId);
       if (myId == null) continue;
       const team1 = m.team1 as number[];
       const team2 = m.team2 as number[];
-      if (team1.includes(myId)) highestScore = Math.max(highestScore, m.score1 ?? 0);
-      else if (team2.includes(myId)) highestScore = Math.max(highestScore, m.score2 ?? 0);
+      const onTeam1 = team1.includes(myId);
+      const onTeam2 = team2.includes(myId);
+      if (!onTeam1 && !onTeam2) continue;
+      const won = onTeam1 ? (m.score1 ?? 0) > (m.score2 ?? 0) : (m.score2 ?? 0) > (m.score1 ?? 0);
+      if (won) {
+        currentStreak += 1;
+        highestWinStreak = Math.max(highestWinStreak, currentStreak);
+      } else {
+        currentStreak = 0;
+      }
     }
   }
 
-  return { sessionsPlayed, gamesPlayed, wins, losses, pointsFor, averageScore, highestScore };
+  return { sessionsPlayed, gamesPlayed, wins, losses, pointsFor, pointsAgainst, averagePointDiff, highestWinStreak };
 }
 
 export interface AccountRankEntry {

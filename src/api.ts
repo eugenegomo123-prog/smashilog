@@ -115,8 +115,9 @@ export const api = {
       wins: number;
       losses: number;
       pointsFor: number;
-      averageScore: number;
-      highestScore: number;
+      pointsAgainst: number;
+      averagePointDiff: number;
+      highestWinStreak: number;
     }>("/me/stats"),
   getMyRating: () =>
     request<{
@@ -204,8 +205,9 @@ export const api = {
         wins: number;
         losses: number;
         pointsFor: number;
-        averageScore: number;
-        highestScore: number;
+        pointsAgainst: number;
+        averagePointDiff: number;
+        highestWinStreak: number;
       };
       rating: {
         tier: string;
