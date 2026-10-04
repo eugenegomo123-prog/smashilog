@@ -462,6 +462,9 @@ function AccountTab() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteError, setDeleteError] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -482,6 +485,28 @@ function AccountTab() {
       setError(err instanceof Error ? err.message : "Could not update password");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function deleteAccount(e: React.FormEvent) {
+    e.preventDefault();
+    setDeleteError("");
+    if (
+      !confirm(
+        "Delete your account? Your login goes away for good. Your past matches and scores stay in session " +
+          "history (same as a guest player's would), but you won't be able to log back in as yourself.",
+      )
+    ) {
+      return;
+    }
+    setDeleting(true);
+    try {
+      await api.deleteAccount(deletePassword);
+      api.clearPlayerSession();
+      navigate("/");
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Could not delete account");
+      setDeleting(false);
     }
   }
 
@@ -530,6 +555,26 @@ function AccountTab() {
       >
         Log out
       </button>
+
+      <div className="card">
+        <label>Delete account</label>
+        <div className="subtitle" style={{ marginTop: 2, marginBottom: 10 }}>
+          Your login goes away for good. Past matches and scores stay in session history, same as a guest
+          player's would -- they just won't be tied to a login anymore.
+        </div>
+        <form className="stack" onSubmit={deleteAccount}>
+          <input
+            type="password"
+            placeholder="Enter your password to confirm"
+            value={deletePassword}
+            onChange={(e) => setDeletePassword(e.target.value)}
+          />
+          {deleteError && <div className="error-text">{deleteError}</div>}
+          <button className="btn danger" type="submit" disabled={deleting || !deletePassword}>
+            {deleting ? "Deleting…" : "Delete account"}
+          </button>
+        </form>
+      </div>
     </div>
   );
 }

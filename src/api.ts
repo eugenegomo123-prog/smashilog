@@ -138,6 +138,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ currentPassword, newPassword }),
     }),
+  // Removes the login (requires the current password); past matches and
+  // other players' stats are unaffected -- see worker/index.ts's
+  // /me/delete-account for exactly what happens to this account's own data.
+  deleteAccount: (password: string) =>
+    request<{ ok: true }>("/me/delete-account", { method: "POST", body: JSON.stringify({ password }) }),
   getMyHistory: () =>
     request<
       {

@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { getDb } from "../db";
-import { accounts, matches, players, sessions } from "../db/schema";
+import { accounts, matches, players, ratingHistory, sessions } from "../db/schema";
 import { createHostToken, requireHost } from "./lib/auth";
 import { createPlayerToken, createRegistrationToken, requirePlayer, verifyRegistrationToken } from "./lib/playerAuth";
 import {
@@ -262,6 +262,36 @@ app.post("/api/me/change-password", async (c) => {
   }
   const { hash, salt } = await hashPassword(newPassword);
   await db.update(accounts).set({ passwordHash: hash, passwordSalt: salt }).where(eq(accounts.id, accountId));
+  return c.json({ ok: true });
+});
+
+// POST /api/me/delete-account -- self-service, requires the current password
+// (same confirmation as change-password above). This removes the login
+// itself, but does NOT delete this account's player rows or past matches --
+// doing so would leave holes in other players' match history and session
+// stats. Instead their player rows are unlinked (accountId -> null), which
+// is exactly how a guest player already behaves: the name and every past
+// score stay as a historical record, just no longer tied to a login.
+// ratingHistory rows are deleted outright since accountId there is NOT NULL
+// (can't be unlinked the same way) and that table is nothing but this
+// account's own personal rating-change log.
+app.post("/api/me/delete-account", async (c) => {
+  const secret = playerAuthSecret(c.env);
+  const accountId = secret ? await requirePlayer(c.req.raw, secret) : null;
+  if (!accountId) return c.text("Unauthorized", 401);
+  const db = getDb(c.env.DATABASE_URL);
+  const body = await c.req.json().catch(() => ({}));
+  const password = String(body.password || "");
+
+  const [account] = await db.select().from(accounts).where(eq(accounts.id, accountId));
+  if (!account || !(await verifyPassword(password, account.passwordHash, account.passwordSalt))) {
+    return c.json({ error: "Incorrect password" }, 401);
+  }
+
+  await db.update(players).set({ accountId: null }).where(eq(players.accountId, accountId));
+  await db.delete(ratingHistory).where(eq(ratingHistory.accountId, accountId));
+  await db.delete(accounts).where(eq(accounts.id, accountId));
+
   return c.json({ ok: true });
 });
 
