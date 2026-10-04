@@ -52,7 +52,11 @@ export const players = pgTable("players", {
   name: text().notNull(),
   level: text().notNull().default("C"), // A-E
   requestedLevel: text("requested_level"),
-  status: text().notNull().default("active"), // active | resting | inactive
+  // Starts "inactive" -- a newly-joined/added player isn't pulled into
+  // matchmaking suggestions until the host flips them to "active" (see
+  // POST /sessions/:id/players in worker/index.ts), since joining doesn't
+  // mean they've actually checked in at the venue yet.
+  status: text().notNull().default("inactive"), // active | resting | inactive
   playingMode: text("playing_mode").notNull().default("competitive"), // competitive | chill (chill = excluded from ranking)
   approved: boolean().notNull().default(false),
   wins: integer().notNull().default(0),

@@ -364,14 +364,18 @@ app.post("/api/sessions/:id/players", async (c) => {
         level: "C",
         requestedLevel,
         approved: false,
-        status: "active",
+        // Starts inactive -- joining a session isn't the same as having
+        // checked in at the venue. The host flips them to active once
+        // they've actually arrived (same status dropdown used everywhere
+        // else). See the matching comment on db/schema.ts's players.status.
+        status: "inactive",
         accountId,
       })
       .returning();
     return c.json(created, 201);
   }
 
-  // Existing guest / host-adds-player path, unchanged.
+  // Existing guest / host-adds-player path.
   const name = typedName;
   if (!name) return c.json({ error: "Name is required" }, 400);
 
@@ -383,7 +387,7 @@ app.post("/api/sessions/:id/players", async (c) => {
       level: isHost ? requestedLevel : "C",
       requestedLevel: isHost ? null : requestedLevel,
       approved: isHost,
-      status: "active",
+      status: "inactive",
     })
     .returning();
   return c.json(created, 201);
