@@ -623,6 +623,32 @@ app.delete("/api/players/:id", async (c) => {
   return c.json({ ok: true });
 });
 
+// POST /api/players/:id/reset-password -- host sets a brand-new password for a
+// registered player's account, without ever needing (or seeing) the old one.
+// This is the safe alternative to storing/viewing plain-text passwords: a
+// forgotten password gets fixed the same way, but nobody's real password is
+// ever stored anywhere other than its one-way hash (worker/lib/passwords.ts).
+// Guests (accountId null -- no login of their own) have nothing to reset.
+app.post("/api/players/:id/reset-password", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isFinite(id)) return c.text("Invalid player id", 400);
+  if (!(await requireHost(c.req.raw, hostSecret(c.env)))) return c.text("Unauthorized", 401);
+  const db = getDb(c.env.DATABASE_URL);
+  const body = await c.req.json().catch(() => ({}));
+  const newPassword = String(body.newPassword || "");
+  if (newPassword.length < 6) return c.json({ error: "New password must be at least 6 characters" }, 400);
+
+  const [player] = await db.select().from(players).where(eq(players.id, id));
+  if (!player) return c.text("Not found", 404);
+  if (player.accountId == null) {
+    return c.json({ error: "This player is a guest and has no account to reset a password on." }, 400);
+  }
+
+  const { hash, salt } = await hashPassword(newPassword);
+  await db.update(accounts).set({ passwordHash: hash, passwordSalt: salt }).where(eq(accounts.id, player.accountId));
+  return c.json({ ok: true });
+});
+
 // PATCH /api/matches/:id -- submit or edit a score
 app.patch("/api/matches/:id", async (c) => {
   const id = Number(c.req.param("id"));

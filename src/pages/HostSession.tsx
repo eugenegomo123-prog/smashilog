@@ -431,6 +431,27 @@ function PlayersTab({
                 <option value="competitive">🏆 Competitive — ranked</option>
                 <option value="chill">😎 Chilling — unranked</option>
               </select>
+              {p.accountId != null && (
+                <button
+                  className="btn small"
+                  onClick={async () => {
+                    const newPassword = window.prompt(`New password for ${p.name} (at least 6 characters):`);
+                    if (newPassword === null) return; // cancelled
+                    if (newPassword.length < 6) {
+                      alert("Password must be at least 6 characters.");
+                      return;
+                    }
+                    try {
+                      await api.resetPlayerPassword(p.id, newPassword);
+                      alert(`${p.name}'s password has been reset.`);
+                    } catch (err) {
+                      alert(err instanceof Error ? err.message : "Could not reset this password");
+                    }
+                  }}
+                >
+                  Reset password
+                </button>
+              )}
             </div>
           </div>
         ))}

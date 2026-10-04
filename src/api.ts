@@ -29,6 +29,10 @@ export interface Player {
   gamesPlayed: number;
   lastMatchEndedAt: string | null;
   preferredPartnerId: number | null;
+  // Null for a guest (today's default join flow); set when this player row
+  // belongs to a registered account (see db/schema.ts). Used client-side only
+  // to decide whether a "reset password" action makes sense for this player.
+  accountId: number | null;
   createdAt: string;
 }
 
@@ -218,6 +222,13 @@ export const api = {
     updates: Partial<Pick<Player, "level" | "status" | "approved" | "name" | "preferredPartnerId" | "playingMode">>,
   ) => request<Player>(`/players/${id}`, { method: "PATCH", body: JSON.stringify(updates) }),
   removePlayer: (id: number) => request<{ ok: true }>(`/players/${id}`, { method: "DELETE" }),
+  // Host-only: set a brand-new password for a registered player's account.
+  // No old password needed/seen -- see worker/index.ts's reset-password route.
+  resetPlayerPassword: (id: number, newPassword: string) =>
+    request<{ ok: true }>(`/players/${id}/reset-password`, {
+      method: "POST",
+      body: JSON.stringify({ newPassword }),
+    }),
 
   getMatches: (sessionId: number) =>
     request<{ ongoing: Match[]; history: Match[]; suggested: Match[]; queued: Match[] }>(
