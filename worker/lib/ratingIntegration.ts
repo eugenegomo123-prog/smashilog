@@ -18,6 +18,7 @@ import {
   GUEST_LEVEL_MMR,
   BASE_MMR,
   RD_START,
+  PROVISIONAL_GAMES_THRESHOLD,
   growRatingDeviationForInactivity,
   type RatedPlayer,
   type MatchRatingResult,
@@ -181,5 +182,8 @@ export function publicRatingView(account: {
     seasonPoints: account.seasonPoints,
     ratedGamesPlayed: account.ratedGamesPlayed,
     currentRatingStreak: account.currentRatingStreak,
+    // Sent so the client can render "X of Y rated games played" without
+    // hardcoding the threshold a second time -- see rating.ts.
+    provisionalGamesThreshold: PROVISIONAL_GAMES_THRESHOLD,
   };
 }

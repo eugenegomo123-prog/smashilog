@@ -122,6 +122,7 @@ export const api = {
       seasonPoints: number;
       ratedGamesPlayed: number;
       currentRatingStreak: number;
+      provisionalGamesThreshold: number;
     }>("/me/rating"),
   getJoinableSessions: () =>
     request<{ id: number; name: string; playerCount: number; alreadyJoined: boolean; approved: boolean }[]>(

@@ -76,6 +76,11 @@ export const RD_INACTIVITY_C = 30; // Glicko-style growth constant per period
 export const K_BASE = 24;
 export const K_MAX = 120;
 
+// Below this many rated games, a player's tier is still "provisional" --
+// shown to the client so it can display "X of PROVISIONAL_GAMES_THRESHOLD
+// rated games played" instead of hardcoding the number a second time.
+export const PROVISIONAL_GAMES_THRESHOLD = 3;
+
 const GAP_PENALTY_COEFFICIENT = 0.1;
 const GAP_PENALTY_CAP = 50;
 
@@ -179,7 +184,7 @@ export interface TierInfo {
 // Fixed MMR thresholds -- the simplest, most transparent mapping. Season
 // Points already covers the "achievement" layer, so this stays plain.
 export function mmrToTier(mmr: number, ratedGamesPlayed: number, ratingDeviation: number): TierInfo {
-  const provisional = ratedGamesPlayed < 10 || ratingDeviation >= 200;
+  const provisional = ratedGamesPlayed < PROVISIONAL_GAMES_THRESHOLD || ratingDeviation >= 200;
 
   if (mmr < 900) return { tier: "Fledgling", division: null, provisional };
   if (mmr >= 1500) return { tier: "Legend", division: null, provisional };

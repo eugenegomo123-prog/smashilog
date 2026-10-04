@@ -34,6 +34,7 @@ interface RatingInfo {
   seasonPoints: number;
   ratedGamesPlayed: number;
   currentRatingStreak: number;
+  provisionalGamesThreshold: number;
 }
 
 export default function PlayerHome() {
@@ -273,7 +274,9 @@ function RankTab() {
         </div>
         {rating.provisional && (
           <div style={{ fontSize: 13, color: "#d8cdbe", marginTop: 4 }}>
-            Still calibrating ({rating.ratedGamesPlayed} rated game{rating.ratedGamesPlayed === 1 ? "" : "s"})
+            {rating.ratedGamesPlayed < rating.provisionalGamesThreshold
+              ? `Still calibrating — ${rating.ratedGamesPlayed} of ${rating.provisionalGamesThreshold} rated games played`
+              : "Recalibrating after some time away"}
           </div>
         )}
         {rating.currentRatingStreak >= 3 && (
