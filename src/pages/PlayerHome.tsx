@@ -136,7 +136,12 @@ function RankingTab() {
                 return (
                   <tr key={e.accountId} style={isMe ? { background: "var(--panel-2)", fontWeight: 700 } : undefined}>
                     <td>{i + 1}</td>
-                    <td>{e.username}{isMe ? " (you)" : ""}</td>
+                    <td>
+                      <Link to={`/player/${e.accountId}`} style={{ color: "inherit", textDecoration: "underline" }}>
+                        {e.username}
+                      </Link>
+                      {isMe ? " (you)" : ""}
+                    </td>
                     <td>{e.wins}-{e.losses}</td>
                     <td>{winPct}%</td>
                     <td style={{ color: avgDiff > 0 ? "var(--good)" : avgDiff < 0 ? "var(--bad)" : "var(--muted)" }}>

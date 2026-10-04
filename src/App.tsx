@@ -9,6 +9,7 @@ import ParticipantSession from "./pages/ParticipantSession";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import PlayerHome from "./pages/PlayerHome";
+import PlayerProfile from "./pages/PlayerProfile";
 
 export default function App() {
   return (
@@ -23,6 +24,7 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/me" element={<PlayerHome />} />
+      <Route path="/player/:id" element={<PlayerProfile />} />
     </Routes>
   );
 }

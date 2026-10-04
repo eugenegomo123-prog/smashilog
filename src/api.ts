@@ -192,6 +192,31 @@ export const api = {
     }>(`/me/ranking?scope=${encodeURIComponent(scope)}`).then((r) => r.entries),
   getMyPlayerInSession: (sessionId: number) =>
     request<{ player: Player | null }>(`/sessions/${sessionId}/my-player`).then((r) => r.player),
+  // Any logged-in player can look up another account's public profile --
+  // same numbers already visible on the Ranking tab, just focused on one
+  // person. Used by the "view profile" link on each ranking row.
+  getAccountProfile: (accountId: number) =>
+    request<{
+      username: string;
+      stats: {
+        sessionsPlayed: number;
+        gamesPlayed: number;
+        wins: number;
+        losses: number;
+        pointsFor: number;
+        averageScore: number;
+        highestScore: number;
+      };
+      rating: {
+        tier: string;
+        division: "I" | "II" | "III" | null;
+        provisional: boolean;
+        seasonPoints: number;
+        ratedGamesPlayed: number;
+        currentRatingStreak: number;
+        provisionalGamesThreshold: number;
+      };
+    }>(`/accounts/${accountId}/profile`),
   requestToJoinAsAccount: (sessionId: number, requestedLevel: Level) =>
     request<Player>(`/sessions/${sessionId}/players`, {
       method: "POST",

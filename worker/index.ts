@@ -225,6 +225,26 @@ app.get("/api/me/rating", async (c) => {
   return c.json(publicRatingView(account));
 });
 
+// GET /api/accounts/:id/profile -- another account's public profile (overall
+// stats + rank badge), for the "view a player's profile" link on the Ranking
+// tab. Nothing here is more sensitive than what the leaderboard already shows
+// for every account; this just focuses the same public numbers on one person.
+// Any logged-in player can view any account's profile, not just their own --
+// gated by requirePlayer (any valid player token), unlike /api/me/* which is
+// always the token's own account.
+app.get("/api/accounts/:id/profile", async (c) => {
+  const secret = playerAuthSecret(c.env);
+  const requesterId = secret ? await requirePlayer(c.req.raw, secret) : null;
+  if (!requesterId) return c.text("Unauthorized", 401);
+  const accountId = Number(c.req.param("id"));
+  if (!Number.isFinite(accountId)) return c.text("Invalid account id", 400);
+  const db = getDb(c.env.DATABASE_URL);
+  const [account] = await db.select().from(accounts).where(eq(accounts.id, accountId));
+  if (!account) return c.text("Not found", 404);
+  const stats = await computeOverallStats(db, accountId);
+  return c.json({ username: account.username, stats, rating: publicRatingView(account) });
+});
+
 // POST /api/me/change-password
 app.post("/api/me/change-password", async (c) => {
   const secret = playerAuthSecret(c.env);
