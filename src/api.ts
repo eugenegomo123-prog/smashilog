@@ -299,3 +299,19 @@ export const TIER_BADGE_IMAGE: Record<string, string> = {
   Champion: championBadge,
   Legend: legendBadge,
 };
+
+// Lowest to highest, mirrors the MMR thresholds in worker/lib/rating.ts's
+// mmrToTier -- kept here (not derived from TIER_BADGE_IMAGE's key order,
+// which isn't guaranteed) so rank-up detection has one clear source of truth.
+const TIER_ORDER = ["Fledgling", "Rally", "Smash", "Ace", "Champion", "Legend"];
+
+// A single comparable number for a (tier, division) pair -- higher is always
+// better. Division only applies to the four middle tiers; Fledgling and
+// Legend pass division: null and just compare by tier. Used by PlayerHome's
+// RankTab to notice "you're higher than you were last time you checked" and
+// show a congratulations banner.
+export function rankScore(tier: string, division: "I" | "II" | "III" | null): number {
+  const tierIndex = TIER_ORDER.indexOf(tier);
+  const divisionIndex = division === "I" ? 2 : division === "II" ? 1 : 0; // "III" or null -> 0
+  return tierIndex * 3 + divisionIndex;
+}

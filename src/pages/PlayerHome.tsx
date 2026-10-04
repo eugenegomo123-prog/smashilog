@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { api, TIER_BADGE_IMAGE } from "../api";
+import { api, TIER_BADGE_IMAGE, rankScore } from "../api";
 
 type Tab = "stats" | "rank" | "ranking" | "history" | "account";
 
@@ -247,11 +247,29 @@ function StatsTab() {
 function RankTab() {
   const [rating, setRating] = useState<RatingInfo | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [rankUpMessage, setRankUpMessage] = useState<string | null>(null);
 
   useEffect(() => {
     api
       .getMyRating()
-      .then(setRating)
+      .then((r) => {
+        setRating(r);
+
+        // Compare against the rank we last showed this player on this device
+        // (localStorage, keyed by username) -- if it went up since then,
+        // celebrate it. First-ever check just records a baseline silently,
+        // so a brand-new player doesn't get "congratulated" on login.
+        const key = `smashilog_last_rank_${api.playerUsername() ?? "anon"}`;
+        const stored = localStorage.getItem(key);
+        const currentScore = rankScore(r.tier, r.division);
+        if (stored !== null) {
+          const previousScore = Number(stored);
+          if (Number.isFinite(previousScore) && currentScore > previousScore) {
+            setRankUpMessage(`🎉 You ranked up to ${r.tier}${r.division ? ` ${r.division}` : ""}!`);
+          }
+        }
+        localStorage.setItem(key, String(currentScore));
+      })
       .catch(() => setRating(null))
       .finally(() => setLoaded(true));
   }, []);
@@ -266,6 +284,14 @@ function RankTab() {
 
   return (
     <div className="stack">
+      {rankUpMessage && (
+        <div className="rank-up-banner">
+          <span>{rankUpMessage}</span>
+          <button className="rank-up-dismiss" onClick={() => setRankUpMessage(null)} aria-label="Dismiss">
+            ×
+          </button>
+        </div>
+      )}
       <div className="rank-badge-card">
         <img className="rank-badge-image" src={badgeSrc} alt={`${rating.tier} rank badge`} />
         <div style={{ fontWeight: 800, fontSize: 26, color: "#fff", marginTop: 14 }}>
