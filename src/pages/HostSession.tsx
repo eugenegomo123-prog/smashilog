@@ -578,9 +578,14 @@ function TeamLine({
       <span>
         {ids
           .map((id) => {
-            const name = playerById(id)?.name ?? "?";
+            const player = playerById(id);
+            const name = player?.name ?? "?";
+            // Shown so the host can tell at a glance whether a suggested or
+            // queued match mixes chill and competitive players, and group
+            // like-with-like when building matches themselves.
+            const modeIcon = player?.playingMode === "chill" ? "😎" : "🏆";
             const flags = `${justPlayed?.has(id) ? " 🥵" : ""}${restingLong?.has(id) ? " ⏳" : ""}`;
-            return name + flags;
+            return `${modeIcon} ${name}${flags}`;
           })
           .join(" & ")}
       </span>
@@ -784,7 +789,8 @@ function CustomMatchBuilder({
         <option value="">{label}</option>
         {optionsFor(value).map((p) => (
           <option key={p.id} value={p.id}>
-            {LEVEL_ICON[p.level]} {p.name} · {p.gamesPlayed}g{flagsFor(p.id)}
+            {p.playingMode === "chill" ? "😎" : "🏆"} {LEVEL_ICON[p.level]} {p.name} · {p.gamesPlayed}g
+            {flagsFor(p.id)}
           </option>
         ))}
       </select>
@@ -839,7 +845,7 @@ function CustomMatchBuilder({
         </div>
       )}
       <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 8 }}>
-        🥵 just played · ⏳ waiting a while
+        🏆 competitive · 😎 chill · 🥵 just played · ⏳ waiting a while
       </div>
     </div>
   );
