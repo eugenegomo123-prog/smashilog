@@ -11,6 +11,7 @@ import {
   type Level,
   type PlayingMode,
 } from "../api";
+import { shareResultsImage } from "../shareImage";
 
 type Tab = "players" | "courts" | "queue" | "ranking" | "history" | "settings";
 
@@ -92,28 +93,17 @@ function buildAwards(players: Player[], history: Match[]) {
   return { mostGames, bestDiff, streakPlayers, streakValue };
 }
 
-function buildResultsText(session: Session, players: Player[]): string {
-  const sorted = [...players].sort(rankCompare);
-  const lines = sorted.map((p, i) => `${i + 1}. ${p.name} — ${p.wins}-${p.losses}`);
-  return `🏸 ${session.name} — Standings\n\n${lines.join("\n")}`;
-}
-
-async function shareResults(session: Session, players: Player[], onDone: (msg: string) => void) {
-  const text = buildResultsText(session, players);
-  if (navigator.share) {
-    try {
-      await navigator.share({ title: `${session.name} results`, text });
-      return;
-    } catch {
-      // cancelled or unsupported -- fall through to clipboard
-    }
-  }
-  try {
-    await navigator.clipboard.writeText(text);
-    onDone("Copied results to clipboard!");
-  } catch {
-    onDone("Couldn't copy — try again.");
-  }
+// Share-image plumbing (the actual drawing lives in src/shareImage.ts, shared
+// with ParticipantSession.tsx's identical RankingTab) -- this just formats
+// the date line and hands off already-computed session data.
+function resultsDateLabel(session: Session): string {
+  const prefix = session.status === "ended" ? "Final results" : "Standings so far";
+  const date = new Date(session.endedAt ?? session.createdAt).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+  return `${prefix} · ${date}`;
 }
 
 // Players eligible to appear in a new suggestion or custom match: approved, active,
@@ -925,20 +915,29 @@ function RankingTab({ session, players, history }: { session: Session; players: 
   const rest = sorted.slice(3);
   const awards = session.status === "ended" ? buildAwards(players, history) : null;
   const [shareMsg, setShareMsg] = useState("");
+  const [sharing, setSharing] = useState(false);
 
-  function handleShare() {
-    shareResults(session, players, (msg) => {
-      setShareMsg(msg);
-      setTimeout(() => setShareMsg(""), 3000);
-    });
+  async function handleShare() {
+    setSharing(true);
+    try {
+      await shareResultsImage(
+        { sessionName: session.name, dateLabel: resultsDateLabel(session), sorted, awards },
+        (msg) => {
+          setShareMsg(msg);
+          setTimeout(() => setShareMsg(""), 4000);
+        },
+      );
+    } finally {
+      setSharing(false);
+    }
   }
 
   return (
     <div>
       <div className="row between" style={{ marginBottom: 16 }}>
         <div style={{ fontSize: 13, color: "var(--muted)" }}>{shareMsg || " "}</div>
-        <button className="btn small" onClick={handleShare} disabled={sorted.length === 0}>
-          Share results
+        <button className="btn small" onClick={handleShare} disabled={sorted.length === 0 || sharing}>
+          {sharing ? "Preparing image…" : "Share results"}
         </button>
       </div>
 
