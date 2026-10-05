@@ -492,7 +492,10 @@ function AccountTab() {
     e.preventDefault();
     setDeleteError("");
     if (
-      !confirm(
+      // window.confirm, not the bare name -- this component already has a
+      // `confirm` state variable (the "Confirm new password" field) that
+      // shadows the global dialog function of the same name.
+      !window.confirm(
         "Delete your account? Your login goes away for good. Your past matches and scores stay in session " +
           "history (same as a guest player's would), but you won't be able to log back in as yourself.",
       )
