@@ -17,6 +17,16 @@ import { regenerateQueue } from "./lib/regenerate";
 import { fillOpenCourtsFromQueue, nextQueuePosition, MAX_QUEUE_LENGTH } from "./lib/queue";
 import { playerIdsUnavailable, recomputeSessionStats } from "./lib/stats";
 import { rateCompletedMatch, publicRatingView } from "./lib/ratingIntegration";
+import { normalizeCourts, resizeCourts, type Court } from "./lib/courts";
+
+// A session row as read from the DB, with courtLabels normalized to the
+// current { id, label } shape -- see worker/lib/courts.ts. Every response
+// that includes a session goes through this rather than returning the raw
+// row, so the client never has to deal with an older session's legacy
+// plain-string court list.
+function presentSession<T extends { courtLabels: unknown }>(session: T): T & { courtLabels: Court[] } {
+  return { ...session, courtLabels: normalizeCourts(session.courtLabels) };
+}
 
 // Bindings available on `c.env`, set in wrangler.jsonc / as Worker secrets.
 // `ASSETS` is the binding for the static frontend build (see wrangler.jsonc "assets").
@@ -310,7 +320,7 @@ app.post("/api/host/registration-token", async (c) => {
 app.get("/api/sessions", async (c) => {
   const db = getDb(c.env.DATABASE_URL);
   const all = await db.select().from(sessions).orderBy(desc(sessions.createdAt));
-  return c.json(all);
+  return c.json(all.map(presentSession));
 });
 
 app.post("/api/sessions", async (c) => {
@@ -320,12 +330,12 @@ app.post("/api/sessions", async (c) => {
   const name = String(body.name || "").trim();
   const courtCount = Math.max(1, Number(body.courtCount) || 4);
   if (!name) return c.json({ error: "Session name is required" }, 400);
-  const courtLabels = Array.from({ length: courtCount }, (_, i) => `Court #${i + 1}`);
+  const courtLabels = resizeCourts([], courtCount);
   const [created] = await db
     .insert(sessions)
     .values({ name, courtCount, courtLabels, status: "active" })
     .returning();
-  return c.json(created, 201);
+  return c.json(presentSession(created), 201);
 });
 
 // GET/PATCH/DELETE /api/sessions/:id
@@ -335,7 +345,7 @@ app.get("/api/sessions/:id", async (c) => {
   const db = getDb(c.env.DATABASE_URL);
   const [session] = await db.select().from(sessions).where(eq(sessions.id, id));
   if (!session) return c.text("Not found", 404);
-  return c.json(session);
+  return c.json(presentSession(session));
 });
 
 app.patch("/api/sessions/:id", async (c) => {
@@ -354,11 +364,21 @@ app.patch("/api/sessions/:id", async (c) => {
     updates.endedAt = null;
   }
   if (typeof body.name === "string" && body.name.trim()) updates.name = body.name.trim();
-  if (Number.isFinite(Number(body.courtCount))) updates.courtCount = Number(body.courtCount);
-  if (Array.isArray(body.courtLabels)) updates.courtLabels = body.courtLabels;
+  // Resizing court count preserves every existing court's stable id/label by
+  // position (resizeCourts) -- it never rebuilds the array from scratch, so an
+  // ongoing match's courtId stays valid across a resize, not just a rename.
+  // Court labels themselves are never set in bulk here -- see the dedicated
+  // PATCH /sessions/:id/courts/:courtId endpoint below for renaming one court.
+  if (Number.isFinite(Number(body.courtCount))) {
+    const newCount = Number(body.courtCount);
+    const [existing] = await db.select().from(sessions).where(eq(sessions.id, id));
+    if (!existing) return c.text("Not found", 404);
+    updates.courtCount = newCount;
+    updates.courtLabels = resizeCourts(normalizeCourts(existing.courtLabels), newCount);
+  }
   if (Object.keys(updates).length === 0) return c.json({ error: "No valid fields" }, 400);
   const [updated] = await db.update(sessions).set(updates).where(eq(sessions.id, id)).returning();
-  return c.json(updated);
+  return c.json(presentSession(updated));
 });
 
 app.delete("/api/sessions/:id", async (c) => {
@@ -370,6 +390,36 @@ app.delete("/api/sessions/:id", async (c) => {
   await db.delete(players).where(eq(players.sessionId, id));
   await db.delete(sessions).where(eq(sessions.id, id));
   return c.json({ ok: true });
+});
+
+// PATCH /api/sessions/:id/courts/:courtId -- rename a single court by its
+// stable id. Only the label changes; the id (and therefore any ongoing
+// match's link to this court -- see worker/lib/courts.ts) is untouched, and
+// the number of courts never changes here, so this can never duplicate or
+// drop a court slot.
+app.patch("/api/sessions/:id/courts/:courtId", async (c) => {
+  const sessionId = Number(c.req.param("id"));
+  if (!Number.isFinite(sessionId)) return c.text("Invalid session id", 400);
+  if (!(await requireHost(c.req.raw, hostSecret(c.env)))) return c.text("Unauthorized", 401);
+  const courtId = c.req.param("courtId");
+  const db = getDb(c.env.DATABASE_URL);
+  const body = await c.req.json().catch(() => ({}));
+  const label = typeof body.label === "string" ? body.label.trim() : "";
+  if (!label) return c.json({ error: "Court name is required" }, 400);
+
+  const [existing] = await db.select().from(sessions).where(eq(sessions.id, sessionId));
+  if (!existing) return c.text("Not found", 404);
+  const courts = normalizeCourts(existing.courtLabels);
+  const found = courts.some((court) => court.id === courtId);
+  if (!found) return c.text("Court not found", 404);
+  const updatedCourts = courts.map((court) => (court.id === courtId ? { ...court, label } : court));
+
+  const [updated] = await db
+    .update(sessions)
+    .set({ courtLabels: updatedCourts })
+    .where(eq(sessions.id, sessionId))
+    .returning();
+  return c.json(presentSession(updated));
 });
 
 // GET/POST /api/sessions/:id/players

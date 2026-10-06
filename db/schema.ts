@@ -41,6 +41,12 @@ export const sessions = pgTable("sessions", {
   name: text().notNull(),
   status: text("status").notNull().default("active"), // active | ended
   courtCount: integer("court_count").notNull().default(4),
+  // Array of { id: string, label: string } -- id is a stable, server-generated
+  // identity for the physical court, independent of its display label, so
+  // renaming a court (worker/index.ts's PATCH /sessions/:id/courts/:courtId)
+  // never breaks the link to a match already in progress on it. (Older rows
+  // predating this may still hold plain strings; see src/api.ts for the
+  // reading-both-shapes note -- but every write path emits objects only.)
   courtLabels: jsonb("court_labels").notNull().default([]),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   endedAt: timestamp("ended_at"),
@@ -79,7 +85,20 @@ export const players = pgTable("players", {
 export const matches = pgTable("matches", {
   id: serial().primaryKey(),
   sessionId: integer("session_id").notNull().references(() => sessions.id),
+  // Display-name snapshot: whatever the court was called at the moment this
+  // match became ongoing (or "" if it never has been -- suggested/queued).
+  // Frozen from then on, which is exactly right for history ("what was this
+  // called when it was played"), but NOT what live occupancy should match
+  // against -- see courtId below.
   courtLabel: text("court_label").notNull(),
+  // Stable court identity (worker/lib/courts.ts's Court.id), independent of
+  // the label above, so renaming a court mid-match (PATCH
+  // /sessions/:id/courts/:courtId) can't orphan an in-progress match from the
+  // physical court it's actually on. Null while suggested/queued (no court
+  // yet) and for any match that was already ongoing before this column
+  // existed -- worker/lib/courts.ts's isCourtOccupied() falls back to
+  // matching courtLabel for that one-time transitional case.
+  courtId: text("court_id"),
   team1: jsonb("team1").notNull(), // [playerId, playerId]
   team2: jsonb("team2").notNull(),
   status: text().notNull().default("ongoing"), // ongoing | queued | completed | suggested

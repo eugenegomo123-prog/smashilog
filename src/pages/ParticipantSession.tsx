@@ -1,6 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { api, LEVELS, LEVEL_ICON, LEVEL_LABEL, type Level, type Match, type Player, type Session, type PlayingMode } from "../api";
+import {
+  api,
+  LEVELS,
+  LEVEL_ICON,
+  LEVEL_LABEL,
+  liveCourtLabel,
+  type Level,
+  type Match,
+  type Player,
+  type Session,
+  type PlayingMode,
+  type Court,
+} from "../api";
 import { playerKey } from "./ParticipantJoin";
 import { shareResultsImage } from "../shareImage";
 
@@ -145,18 +157,22 @@ export default function ParticipantSession() {
     setSession(s);
     setPlayers(p);
     setMatchData(m);
-    checkStatus(m.ongoing, m.queued);
+    checkStatus(m.ongoing, m.queued, s.courtLabels);
   }
 
   // Now that the actual queue is a real, host-curated order (not just a computer
   // guess), a predictive "you're up soon" notice is reliable again -- alongside the
   // confirmatory "you're on court now" one for the moment it actually happens.
-  function checkStatus(ongoing: Match[], queued: Match[]) {
+  function checkStatus(ongoing: Match[], queued: Match[], courtLabels: Court[]) {
     if (!myId) return;
     const myMatch = ongoing.find((m) => [...m.team1, ...m.team2].includes(myId));
     const isOnCourtNow = !!myMatch;
     if (isOnCourtNow && !wasOnCourt.current) {
-      fireNotification(`You're on ${myMatch!.courtLabel} — head to the court!`);
+      // Resolves the court's current name by stable id rather than the
+      // match's frozen label snapshot, so a court renamed mid-match still
+      // notifies the player with its real, current name. See src/api.ts's
+      // liveCourtLabel.
+      fireNotification(`You're on ${liveCourtLabel(courtLabels, myMatch!)} — head to the court!`);
     }
     wasOnCourt.current = isOnCourtNow;
 
@@ -200,7 +216,9 @@ export default function ParticipantSession() {
       </div>
 
       {tab === "dashboard" && me && <DashboardTab player={me} players={players} onChanged={load} />}
-      {tab === "ongoing" && <OngoingTab matches={matchData.ongoing} playerById={playerById} myId={myId} />}
+      {tab === "ongoing" && (
+        <OngoingTab matches={matchData.ongoing} courtLabels={session.courtLabels} playerById={playerById} myId={myId} />
+      )}
       {tab === "queue" && <QueueTab queued={matchData.queued} playerById={playerById} myId={myId} />}
       {tab === "ranking" && (
         <RankingTab
@@ -316,10 +334,12 @@ function DashboardTab({
 
 function OngoingTab({
   matches,
+  courtLabels,
   playerById,
   myId,
 }: {
   matches: Match[];
+  courtLabels: Court[];
   playerById: (id: number) => Player | undefined;
   myId: number | null;
 }) {
@@ -330,7 +350,7 @@ function OngoingTab({
         return (
           <div key={m.id} className="match-card" style={mine ? { borderColor: "var(--accent)" } : undefined}>
             <div className="court-label">
-              {m.courtLabel} · started {timeAgo(m.startedAt)}
+              {liveCourtLabel(courtLabels, m)} · started {timeAgo(m.startedAt)}
             </div>
             <div className="team-row">
               <span>{m.team1.map((id) => playerById(id)?.name ?? "?").join(" & ")}</span>

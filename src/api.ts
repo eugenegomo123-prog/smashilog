@@ -2,12 +2,20 @@ export type Level = "A" | "B" | "C" | "D" | "E";
 export type PlayerStatus = "active" | "resting" | "inactive";
 export type PlayingMode = "competitive" | "chill";
 
+// A physical court. id is stable and server-generated -- it never changes
+// when the court is renamed, so an ongoing match stays linked to the right
+// court across a rename (see worker/lib/courts.ts on the server).
+export interface Court {
+  id: string;
+  label: string;
+}
+
 export interface Session {
   id: number;
   name: string;
   status: "active" | "ended";
   courtCount: number;
-  courtLabels: string[];
+  courtLabels: Court[];
   createdAt: string;
   endedAt: string | null;
 }
@@ -39,7 +47,17 @@ export interface Player {
 export interface Match {
   id: number;
   sessionId: number;
+  // Display-name snapshot of the court as of when this match went ongoing --
+  // frozen from then on, so it's exactly right for history but can go stale
+  // for a still-ongoing match if the court gets renamed afterward. Use
+  // liveCourtLabel() below (with the session's current courtLabels) rather
+  // than this field directly wherever an ongoing match's court name is shown.
   courtLabel: string;
+  // Stable court identity (matches the Court this match is actually on),
+  // independent of the label above. Null while suggested/queued (no court
+  // yet), and for any match that was already ongoing before this field
+  // existed -- see liveCourtLabel()'s fallback below.
+  courtId: string | null;
   team1: number[];
   team2: number[];
   status: "ongoing" | "completed" | "suggested" | "queued";
@@ -48,6 +66,20 @@ export interface Match {
   startedAt: string;
   endedAt: string | null;
   queuePosition: number | null;
+}
+
+// The court name to actually display for a match: resolves via the session's
+// current court list by stable id, falling back to the match's own frozen
+// courtLabel snapshot only if no court with that id exists anymore (the
+// court was removed by shrinking court count) or for the rare pre-courtId
+// match (courtId null). This is what keeps a renamed court's live matches
+// showing the new name instead of the name it had when the match started.
+export function liveCourtLabel(courtLabels: Court[], match: Pick<Match, "courtId" | "courtLabel">): string {
+  if (match.courtId != null) {
+    const court = courtLabels.find((c) => c.id === match.courtId);
+    if (court) return court.label;
+  }
+  return match.courtLabel;
 }
 
 function hostToken(): string | null {
@@ -234,8 +266,15 @@ export const api = {
   createSession: (name: string, courtCount: number) =>
     request<Session>("/sessions", { method: "POST", body: JSON.stringify({ name, courtCount }) }),
   getSession: (id: number) => request<Session>(`/sessions/${id}`),
-  updateSession: (id: number, updates: Partial<Pick<Session, "status" | "name" | "courtCount" | "courtLabels">>) =>
+  updateSession: (id: number, updates: Partial<Pick<Session, "status" | "name" | "courtCount">>) =>
     request<Session>(`/sessions/${id}`, { method: "PATCH", body: JSON.stringify(updates) }),
+  // Renames one court by its stable id -- the id, and therefore any ongoing
+  // match's link to this court, never changes. See worker/lib/courts.ts.
+  renameCourt: (sessionId: number, courtId: string, label: string) =>
+    request<Session>(`/sessions/${sessionId}/courts/${courtId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ label }),
+    }),
   deleteSession: (id: number) => request<{ ok: true }>(`/sessions/${id}`, { method: "DELETE" }),
 
   listPlayers: (sessionId: number) => request<Player[]>(`/sessions/${sessionId}/players`),

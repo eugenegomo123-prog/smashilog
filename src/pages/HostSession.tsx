@@ -5,11 +5,13 @@ import {
   LEVELS,
   LEVEL_ICON,
   LEVEL_LABEL,
+  liveCourtLabel,
   type Session,
   type Player,
   type Match,
   type Level,
   type PlayingMode,
+  type Court,
 } from "../api";
 import { shareResultsImage } from "../shareImage";
 
@@ -465,7 +467,14 @@ function CourtsTab({
   playerById: (id: number) => Player | undefined;
   onChanged: () => void;
 }) {
-  const emptyCourts = session.courtLabels.filter((label) => !ongoing.some((m) => m.courtLabel === label));
+  // A court is occupied when some ongoing match is linked to it by stable id;
+  // only a match from before courtId existed (null) falls back to matching
+  // by label. This is what keeps a renamed court's slot from showing as both
+  // "open" (its new name, no match found) and still holding its live match --
+  // see worker/lib/courts.ts's isCourtOccupied, which this mirrors client-side.
+  const emptyCourts = session.courtLabels.filter(
+    (court) => !ongoing.some((m) => (m.courtId != null ? m.courtId === court.id : m.courtLabel === court.label)),
+  );
 
   return (
     <div>
@@ -476,11 +485,11 @@ function CourtsTab({
       </div>
       <div className="stack">
         {ongoing.map((m) => (
-          <ScoreCard key={m.id} match={m} playerById={playerById} onChanged={onChanged} />
+          <ScoreCard key={m.id} match={m} courtLabels={session.courtLabels} playerById={playerById} onChanged={onChanged} />
         ))}
-        {emptyCourts.map((label) => (
-          <div key={label} className="match-card empty-state">
-            {label} — open · fills automatically from the queue
+        {emptyCourts.map((court) => (
+          <div key={court.id} className="match-card empty-state">
+            {court.label} — open · fills automatically from the queue
           </div>
         ))}
       </div>
@@ -490,10 +499,12 @@ function CourtsTab({
 
 function ScoreCard({
   match,
+  courtLabels,
   playerById,
   onChanged,
 }: {
   match: Match;
+  courtLabels: Court[];
   playerById: (id: number) => Player | undefined;
   onChanged: () => void;
 }) {
@@ -530,7 +541,7 @@ function ScoreCard({
   return (
     <div className="match-card">
       <div className="court-label">
-        {match.courtLabel} · started {timeAgo(match.startedAt)}
+        {liveCourtLabel(courtLabels, match)} · started {timeAgo(match.startedAt)}
       </div>
       <div className="team-row">
         <span>{match.team1.map((id) => playerById(id)?.name ?? "?").join(" & ")}</span>
@@ -1239,8 +1250,12 @@ function SettingsTab({ session, onChanged }: { session: Session; onChanged: () =
           <button
             className="btn primary"
             onClick={async () => {
-              const labels = Array.from({ length: courtCount }, (_, i) => session.courtLabels[i] ?? `Court #${i + 1}`);
-              await api.updateSession(session.id, { courtCount, courtLabels: labels });
+              // The server resizes the existing court list by position,
+              // preserving every remaining court's stable id/label (and
+              // therefore any ongoing match's link to it) -- it only
+              // generates fresh ids for newly-added slots. See
+              // worker/lib/courts.ts's resizeCourts.
+              await api.updateSession(session.id, { courtCount });
               onChanged();
             }}
           >
@@ -1252,14 +1267,17 @@ function SettingsTab({ session, onChanged }: { session: Session; onChanged: () =
       <div className="card">
         <label>Court names</label>
         <div className="stack">
-          {session.courtLabels.map((label, i) => (
+          {session.courtLabels.map((court) => (
             <input
-              key={i}
-              defaultValue={label}
+              key={court.id}
+              defaultValue={court.label}
               onBlur={async (e) => {
-                const labels = [...session.courtLabels];
-                labels[i] = e.target.value || label;
-                await api.updateSession(session.id, { courtLabels: labels });
+                const label = e.target.value.trim() || court.label;
+                if (label === court.label) return;
+                // Renames by stable id -- the court's identity (and any live
+                // match on it) is untouched, and this never changes how many
+                // court slots there are. See worker/lib/courts.ts.
+                await api.renameCourt(session.id, court.id, label);
                 onChanged();
               }}
             />

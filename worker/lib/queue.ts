@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import type { Db } from "../../db";
 import { matches, players, sessions } from "../../db/schema";
+import { isCourtOccupied, normalizeCourts } from "./courts";
 
 export const MAX_QUEUE_LENGTH = 8;
 
@@ -22,8 +23,9 @@ export async function fillOpenCourtsFromQueue(db: Db, sessionId: number) {
   if (!session || session.status !== "active") return;
 
   const allMatches = await db.select().from(matches).where(eq(matches.sessionId, sessionId));
-  const occupiedLabels = new Set(allMatches.filter((m) => m.status === "ongoing").map((m) => m.courtLabel));
-  const openCourts = (session.courtLabels as string[]).filter((label) => !occupiedLabels.has(label));
+  const ongoingMatches = allMatches.filter((m) => m.status === "ongoing");
+  const courts = normalizeCourts(session.courtLabels);
+  const openCourts = courts.filter((court) => !isCourtOccupied(court, ongoingMatches));
   if (openCourts.length === 0) return;
 
   const queued = allMatches
@@ -53,7 +55,7 @@ export async function fillOpenCourtsFromQueue(db: Db, sessionId: number) {
     const court = openCourts[courtIndex];
     await db
       .update(matches)
-      .set({ status: "ongoing", courtLabel: court, startedAt: new Date() })
+      .set({ status: "ongoing", courtId: court.id, courtLabel: court.label, startedAt: new Date() })
       .where(eq(matches.id, match.id));
     for (const pid of ids) busy.add(pid);
     courtIndex++;
