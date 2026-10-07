@@ -16,7 +16,7 @@ import { hashPassword, verifyPassword } from "./lib/passwords";
 import { regenerateQueue } from "./lib/regenerate";
 import { fillOpenCourtsFromQueue, nextQueuePosition, MAX_QUEUE_LENGTH } from "./lib/queue";
 import { playerIdsUnavailable, recomputeSessionStats } from "./lib/stats";
-import { rateCompletedMatch, publicRatingView } from "./lib/ratingIntegration";
+import { rateCompletedMatch, rollbackMatchRating, publicRatingView } from "./lib/ratingIntegration";
 import { normalizeCourts, resizeCourts, type Court } from "./lib/courts";
 
 // A session row as read from the DB, with courtLabels normalized to the
@@ -830,18 +830,27 @@ app.delete("/api/matches/:id", async (c) => {
   // If this match involved a registered player, rateCompletedMatch (see
   // worker/lib/ratingIntegration.ts) logged it as a rating_history row --
   // and that row references this match id, so deleting the match straight
-  // away fails with a foreign key error (same reason /me/delete-account
+  // away would fail with a foreign key error (same reason /me/delete-account
   // clears its own ratingHistory rows before deleting the account, above).
-  // This only erases the audit-log row, not the rating change itself --
-  // the account's mmr/seasonPoints already moved and stay moved. Nothing
-  // live reads this table today, so that's safe, just worth knowing.
-  await db.delete(ratingHistory).where(eq(ratingHistory.matchId, id));
+  // rollbackMatchRating undoes the rating change itself (when it's safe to)
+  // and clears those rows either way. Wrapped in try/catch, same reasoning as
+  // rateCompletedMatch's own call site: a bug in the rating engine must never
+  // be the reason a host can't delete a match. If it does throw, fall back to
+  // just clearing the rows (the account's rating stays as-is, unrolled-back)
+  // so the delete itself still always goes through.
+  let ratingRollback: Awaited<ReturnType<typeof rollbackMatchRating>> | undefined;
+  try {
+    ratingRollback = await rollbackMatchRating(db, id);
+  } catch (err) {
+    console.error("rollbackMatchRating failed, deleting match without a rating rollback", err);
+    await db.delete(ratingHistory).where(eq(ratingHistory.matchId, id));
+  }
   await db.delete(matches).where(eq(matches.id, id));
   await recomputeSessionStats(db, match.sessionId);
   if (wasOngoing) {
     await fillOpenCourtsFromQueue(db, match.sessionId);
   }
-  return c.json({ ok: true });
+  return c.json({ ok: true, ratingRollback });
 });
 
 // Anything that isn't an /api/* route: hand off to the static asset binding, which

@@ -327,7 +327,17 @@ export const api = {
     }),
   submitScore: (matchId: number, score1: number, score2: number) =>
     request<{ ok: true }>(`/matches/${matchId}`, { method: "PATCH", body: JSON.stringify({ score1, score2 }) }),
-  deleteMatch: (matchId: number) => request<{ ok: true }>(`/matches/${matchId}`, { method: "DELETE" }),
+  // ratingRollback reports what happened to each registered player's rating as
+  // a result of removing this match -- see worker/lib/ratingIntegration.ts's
+  // rollbackMatchRating. rolledBack: their rating was restored to what it was
+  // right before this match. skipped: left untouched on purpose (with why) --
+  // currently only because they've played a newer rated match since, which
+  // would make an automatic rollback unsafe.
+  deleteMatch: (matchId: number) =>
+    request<{
+      ok: true;
+      ratingRollback?: { rolledBack: string[]; skipped: { username: string; reason: string }[] };
+    }>(`/matches/${matchId}`, { method: "DELETE" }),
 };
 
 export const LEVELS: Level[] = ["A", "B", "C", "D", "E"];

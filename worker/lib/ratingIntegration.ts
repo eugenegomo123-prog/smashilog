@@ -1,15 +1,18 @@
 // Wires the pure rating engine (./rating.ts) into the database. Everything in
 // rating.ts stays untouched and untouched-by-DB -- this file is the only place
 // that reads/writes accounts.mmr / ratingDeviation / seasonPoints / etc. and the
-// new rating_history table.
+// rating_history table.
 //
-// Called from exactly one place: worker/index.ts's PATCH /api/matches/:id, and
-// only the moment a match first becomes "completed" (never on a later score
-// edit, never on delete -- see AGENTS.md "Known simplifications" for why).
-// Wrapped in a try/catch at that call site, so a bug here can never block a
-// host from recording a score -- the original match/stats/queue flow keeps
-// working even if rating updates fail for some reason.
-import { eq, inArray } from "drizzle-orm";
+// rateCompletedMatch is called from exactly one place: worker/index.ts's PATCH
+// /api/matches/:id, and only the moment a match first becomes "completed"
+// (never on a later score edit -- see AGENTS.md "Known simplifications" for
+// why). Wrapped in a try/catch at that call site, so a bug here can never
+// block a host from recording a score -- the original match/stats/queue flow
+// keeps working even if rating updates fail for some reason.
+//
+// rollbackMatchRating is the delete-time counterpart, called from worker/
+// index.ts's DELETE /api/matches/:id.
+import { and, asc, eq, gt, inArray, ne } from "drizzle-orm";
 import type { Db } from "../../db";
 import { accounts, matches, players, ratingHistory } from "../../db/schema";
 import {
@@ -162,6 +165,94 @@ export async function rateCompletedMatch(db: Db, matchId: number): Promise<Match
     });
   }
 
+  return result;
+}
+
+export interface RatingRollbackResult {
+  // Usernames whose rating was restored to what it was right before this match.
+  rolledBack: string[];
+  // Usernames whose rating was deliberately left untouched, with a plain-language reason.
+  skipped: { username: string; reason: string }[];
+}
+
+// Delete-time counterpart to rateCompletedMatch above: undoes this match's
+// effect on every registered account it rated, then clears its rating_history
+// rows (which is also what lets the match itself be deleted -- matches.id is
+// a foreign key target of rating_history.matchId, so a rated match can't be
+// removed while those rows still point at it).
+//
+// mmr/ratingDeviation/seasonPoints/ratedGamesPlayed can always be restored
+// exactly, because rateCompletedMatch already snapshotted each account's
+// "previous" values onto its own rating_history row when the match was rated
+// -- no replay needed for those.
+//
+// currentRatingStreak is the one field that row doesn't snapshot directly,
+// but it doesn't need to be: it only ever depends on the account's own
+// sequence of win/loss outcomes (see the `newStreak = won ? max(1,
+// streak+1) : 0` rule below, identical to the one in rateCompletedMatch
+// above), and that sequence is exactly what each remaining rating_history
+// row's `won` column already records. So it's recomputed by replaying that
+// sequence for just this one account, not by touching anyone else's numbers.
+//
+// The one thing this deliberately does NOT attempt: rolling back a match that
+// ISN'T the account's most recent rated game. That would also require
+// undoing and redoing every rated match that account played after this one
+// (their mmr going into each of those depended on the mmr this match
+// produced), which can cascade into their opponents' and teammates' numbers
+// in those later matches too -- a full historical replay, not a rollback.
+// Safer to leave that account's current rating exactly as-is (still correct
+// for everything that's happened since) and say so plainly, than to "fix"
+// one match by quietly corrupting the ones after it.
+export async function rollbackMatchRating(db: Db, matchId: number): Promise<RatingRollbackResult> {
+  const rows = await db.select().from(ratingHistory).where(eq(ratingHistory.matchId, matchId));
+  const result: RatingRollbackResult = { rolledBack: [], skipped: [] };
+  if (rows.length === 0) return result;
+
+  for (const row of rows) {
+    const [account] = await db.select().from(accounts).where(eq(accounts.id, row.accountId));
+    if (!account) continue; // the account itself is gone -- nothing left to roll back
+
+    const laterRows = await db
+      .select()
+      .from(ratingHistory)
+      .where(and(eq(ratingHistory.accountId, row.accountId), gt(ratingHistory.id, row.id)));
+    if (laterRows.length > 0) {
+      result.skipped.push({ username: account.username, reason: "played a newer rated match since" });
+      continue;
+    }
+
+    const remaining = await db
+      .select()
+      .from(ratingHistory)
+      .where(and(eq(ratingHistory.accountId, row.accountId), ne(ratingHistory.id, row.id)))
+      .orderBy(asc(ratingHistory.id));
+    let streak = 0;
+    for (const r of remaining) {
+      streak = r.won ? Math.max(1, streak + 1) : 0;
+    }
+    const lastRemaining = remaining[remaining.length - 1];
+    let lastRemainingEndedAt: Date | null = null;
+    if (lastRemaining) {
+      const [lastMatch] = await db.select().from(matches).where(eq(matches.id, lastRemaining.matchId));
+      lastRemainingEndedAt = (lastMatch?.endedAt as unknown as Date | null) ?? null;
+    }
+
+    await db
+      .update(accounts)
+      .set({
+        mmr: row.previousMmr,
+        ratingDeviation: row.previousRatingDeviation,
+        seasonPoints: row.previousSeasonPoints,
+        ratedGamesPlayed: Math.max(0, account.ratedGamesPlayed - 1),
+        currentRatingStreak: streak,
+        lastRatedMatchAt: lastRemainingEndedAt,
+      })
+      .where(eq(accounts.id, row.accountId));
+
+    result.rolledBack.push(account.username);
+  }
+
+  await db.delete(ratingHistory).where(eq(ratingHistory.matchId, matchId));
   return result;
 }
 

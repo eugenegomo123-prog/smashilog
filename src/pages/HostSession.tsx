@@ -1065,6 +1065,23 @@ function HistoryTab({
       )
     : history;
 
+  // Deleting a match normally rolls its rating effect back automatically for
+  // any registered player in it (see worker/lib/ratingIntegration.ts). When
+  // that's not safe to do (the player's played a newer rated match since),
+  // nothing breaks -- the match still deletes -- but it's worth telling the
+  // host so they're not surprised the player's rating didn't move. Held here
+  // rather than on the match card itself, since that card unmounts the
+  // instant the deleted match drops out of `history`.
+  const [note, setNote] = useState("");
+
+  function handleDeleted(ratingRollback?: { rolledBack: string[]; skipped: { username: string; reason: string }[] }) {
+    if (!ratingRollback || ratingRollback.skipped.length === 0) return;
+    const names = ratingRollback.skipped.map((s) => s.username).join(", ");
+    const reason = ratingRollback.skipped[0].reason; // same reason for every skipped entry today
+    setNote(`Match deleted. ${names}'s rating wasn't rolled back -- ${reason}, so it's left as-is.`);
+    setTimeout(() => setNote(""), 8000);
+  }
+
   return (
     <div>
       <input
@@ -1073,9 +1090,12 @@ function HistoryTab({
         onChange={(e) => setSearch(e.target.value)}
         style={{ marginBottom: 12 }}
       />
+      {note && (
+        <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 12 }}>{note}</div>
+      )}
       <div className="stack">
         {filtered.map((m) => (
-          <HistoryCard key={m.id} match={m} playerById={playerById} onChanged={onChanged} />
+          <HistoryCard key={m.id} match={m} playerById={playerById} onChanged={onChanged} onDeleted={handleDeleted} />
         ))}
         {history.length === 0 && <div className="empty-state">No completed matches yet.</div>}
         {history.length > 0 && filtered.length === 0 && (
@@ -1090,10 +1110,12 @@ function HistoryCard({
   match,
   playerById,
   onChanged,
+  onDeleted,
 }: {
   match: Match;
   playerById: (id: number) => Player | undefined;
   onChanged: () => void;
+  onDeleted: (ratingRollback?: { rolledBack: string[]; skipped: { username: string; reason: string }[] }) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [score1, setScore1] = useState(String(match.score1 ?? 0));
@@ -1120,8 +1142,9 @@ function HistoryCard({
     setDeleting(true);
     setError("");
     try {
-      await api.deleteMatch(match.id);
+      const res = await api.deleteMatch(match.id);
       await onChanged();
+      onDeleted(res.ratingRollback);
     } catch (err) {
       // Previously swallowed silently -- the button would flash "Deleting…"
       // and the match would just stay in the list with no clue why. Now
