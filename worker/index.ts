@@ -827,6 +827,15 @@ app.delete("/api/matches/:id", async (c) => {
     return c.json({ error: "Suggested matches aren't deleted this way -- try regenerating." }, 400);
   }
   const wasOngoing = match.status === "ongoing";
+  // If this match involved a registered player, rateCompletedMatch (see
+  // worker/lib/ratingIntegration.ts) logged it as a rating_history row --
+  // and that row references this match id, so deleting the match straight
+  // away fails with a foreign key error (same reason /me/delete-account
+  // clears its own ratingHistory rows before deleting the account, above).
+  // This only erases the audit-log row, not the rating change itself --
+  // the account's mmr/seasonPoints already moved and stay moved. Nothing
+  // live reads this table today, so that's safe, just worth knowing.
+  await db.delete(ratingHistory).where(eq(ratingHistory.matchId, id));
   await db.delete(matches).where(eq(matches.id, id));
   await recomputeSessionStats(db, match.sessionId);
   if (wasOngoing) {
