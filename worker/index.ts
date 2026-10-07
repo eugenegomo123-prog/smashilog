@@ -43,6 +43,17 @@ const PLAYING_MODES = ["competitive", "chill"];
 
 const app = new Hono<{ Bindings: Bindings }>();
 
+// Without this, an unexpected error (a bad database query, a missing column,
+// etc.) falls through to Hono's default handler, which returns a bare 500
+// with no body -- the client then just shows "Request failed (500)" with no
+// way to tell what actually broke. This surfaces the real error message
+// instead, and logs it server-side too (visible in `wrangler tail` /
+// the Cloudflare dashboard's Logs tab) for anything this doesn't catch.
+app.onError((err, c) => {
+  console.error(err);
+  return c.json({ error: err instanceof Error ? err.message : "Internal server error" }, 500);
+});
+
 function hostSecret(env: Bindings): string {
   return env.HOST_PASSWORD || "queuemaster";
 }
