@@ -54,7 +54,10 @@ export default function PlayerProfile() {
 
   return (
     <div className="screen">
-      <Link className="back-link" to="/me">
+      {/* Reached only from PlayerHome's Ranking tab today -- this sends
+          "back" straight to that tab (via PlayerHome's ?tab= query param)
+          instead of the default Stats tab. */}
+      <Link className="back-link" to="/me?tab=ranking">
         ← Back
       </Link>
 

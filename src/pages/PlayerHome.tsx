@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api, TIER_BADGE_IMAGE, rankScore } from "../api";
 
 type Tab = "stats" | "rank" | "ranking" | "history" | "account";
+const TABS: Tab[] = ["stats", "rank", "ranking", "history", "account"];
 
 interface MeInfo {
   username: string;
@@ -40,7 +41,22 @@ interface RatingInfo {
 
 export default function PlayerHome() {
   const navigate = useNavigate();
-  const [tab, setTab] = useState<Tab>("stats");
+  // Which tab is open lives in the URL (?tab=ranking), not just component
+  // state -- so a link to a specific tab (e.g. PlayerProfile's "← Back",
+  // reached from the Ranking tab) can send someone straight back to it
+  // instead of always landing on the default Stats tab. "stats" is the
+  // default and intentionally left out of the URL to keep /me's usual link
+  // clean.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedTab = searchParams.get("tab");
+  const [tab, setTabState] = useState<Tab>(
+    requestedTab && (TABS as string[]).includes(requestedTab) ? (requestedTab as Tab) : "stats",
+  );
+
+  function setTab(next: Tab) {
+    setTabState(next);
+    setSearchParams(next === "stats" ? {} : { tab: next }, { replace: true });
+  }
 
   useEffect(() => {
     if (!api.isPlayerLoggedIn()) navigate("/login");
