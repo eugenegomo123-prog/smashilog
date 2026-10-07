@@ -1099,22 +1099,35 @@ function HistoryCard({
   const [score1, setScore1] = useState(String(match.score1 ?? 0));
   const [score2, setScore2] = useState(String(match.score2 ?? 0));
   const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState("");
 
   async function save() {
     if (Number(score1) === Number(score2)) {
       if (!confirm("Scores are tied — is that right? Badminton games don't usually end in a tie.")) return;
     }
-    await api.submitScore(match.id, Number(score1), Number(score2));
-    setEditing(false);
-    onChanged();
+    setError("");
+    try {
+      await api.submitScore(match.id, Number(score1), Number(score2));
+      setEditing(false);
+      await onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save this score");
+    }
   }
 
   async function remove() {
     if (!confirm("Delete this match from history? Everyone's stats will be recalculated.")) return;
     setDeleting(true);
+    setError("");
     try {
       await api.deleteMatch(match.id);
       await onChanged();
+    } catch (err) {
+      // Previously swallowed silently -- the button would flash "Deleting…"
+      // and the match would just stay in the list with no clue why. Now
+      // whatever the server actually said (e.g. an auth or database error)
+      // shows up here instead of disappearing.
+      setError(err instanceof Error ? err.message : "Could not delete this match");
     } finally {
       setDeleting(false);
     }
@@ -1141,6 +1154,7 @@ function HistoryCard({
           <strong>{match.score2}</strong>
         )}
       </div>
+      {error && <div className="error-text" style={{ marginTop: 6 }}>{error}</div>}
       {editing ? (
         <div className="row" style={{ marginTop: 10 }}>
           <button className="btn small primary" onClick={save}>
