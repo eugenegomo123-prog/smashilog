@@ -44,6 +44,29 @@ function buildLastPartnerMap(allMatches: (typeof matches.$inferSelect)[]): Map<n
   return map;
 }
 
+// Each player's opponents from their most recently completed match, if any --
+// same idea as buildLastPartnerMap above, but for "who did I just play against"
+// rather than "who did I just play with". Used as a smaller, secondary nudge
+// (see REPEAT_OPPONENT_PENALTY in matchmaking.ts).
+function buildLastOpponentMap(allMatches: (typeof matches.$inferSelect)[]): Map<number, number> {
+  const completed = allMatches
+    .filter((m) => m.status === "completed" && m.endedAt)
+    .sort(
+      (a, b) =>
+        new Date(b.endedAt as unknown as string).getTime() - new Date(a.endedAt as unknown as string).getTime(),
+    );
+  const map = new Map<number, number>();
+  for (const m of completed) {
+    const team1 = m.team1 as number[];
+    const team2 = m.team2 as number[];
+    if (team1.length === 2 && team2.length === 2) {
+      for (const pid of team1) if (!map.has(pid)) map.set(pid, team2[0]);
+      for (const pid of team2) if (!map.has(pid)) map.set(pid, team1[0]);
+    }
+  }
+  return map;
+}
+
 // Replace the session's suggested matches with a fresh batch computed from whoever
 // is currently eligible: approved, status "active", and not already on a court or
 // already sitting in the actual queue. Never touches ongoing/queued/completed matches
@@ -61,7 +84,14 @@ export async function regenerateQueue(db: Db, sessionId: number) {
     .map(toMatchmakingPlayer);
 
   const lastPartnerOf = buildLastPartnerMap(allMatches);
-  const suggestions = generateSuggestedMatches(eligible, lastPartnerOf, SUGGESTIONS_PER_REGENERATE);
+  const lastOpponentOf = buildLastOpponentMap(allMatches);
+  const suggestions = generateSuggestedMatches(
+    eligible,
+    lastPartnerOf,
+    SUGGESTIONS_PER_REGENERATE,
+    session.courtCount,
+    lastOpponentOf,
+  );
 
   await db.delete(matches).where(and(eq(matches.sessionId, sessionId), eq(matches.status, "suggested")));
 

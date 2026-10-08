@@ -14,6 +14,11 @@ import {
   type Court,
 } from "../api";
 import { shareResultsImage } from "../shareImage";
+// Pure, dependency-free scoring module shared with the Worker's matchmaking
+// generator (worker/lib/regenerate.ts) -- imported directly rather than
+// duplicated so the grade shown here always matches the logic that actually
+// picked the match. See that file's header comment for why this is safe.
+import { matchQuality, type MatchQuality } from "../../worker/lib/matchmaking";
 
 type Tab = "players" | "courts" | "queue" | "ranking" | "history" | "settings";
 
@@ -135,6 +140,28 @@ function suggestionReason(match: Match, pool: Player[]): string {
     }
   }
   return "Balanced pick from the active pool";
+}
+
+// Quality grade for a 2v2 match, straight from the shared scoring module --
+// based only on the four players' current levels, so it stays accurate even for
+// a match that was queued a while ago. Returns null for the (should-never-happen)
+// case of a malformed match that isn't a clean 2-vs-2.
+function qualityForMatch(match: Match, playerById: (id: number) => Player | undefined): MatchQuality | null {
+  if (match.team1.length !== 2 || match.team2.length !== 2) return null;
+  const levelOf = (id: number) => playerById(id)?.level ?? "C";
+  return matchQuality(
+    [levelOf(match.team1[0]), levelOf(match.team1[1])],
+    [levelOf(match.team2[0]), levelOf(match.team2[1])],
+  );
+}
+
+function QualityBadge({ quality }: { quality: MatchQuality | null }) {
+  if (!quality) return null;
+  return (
+    <div style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", marginBottom: 2 }}>
+      {quality.emoji} {quality.label} match
+    </div>
+  );
 }
 
 // Players who were in the single most-recently-completed match (history is already
@@ -714,6 +741,7 @@ function SuggestionCard({
   const [error, setError] = useState("");
   const stale = isStale(match, pool);
   const reason = stale ? null : suggestionReason(match, pool);
+  const quality = qualityForMatch(match, playerById);
 
   async function addToQueue() {
     setSending(true);
@@ -730,6 +758,7 @@ function SuggestionCard({
 
   return (
     <div className="match-card">
+      <QualityBadge quality={quality} />
       <TeamLine ids={match.team1} playerById={playerById} justPlayed={justPlayed} restingLong={restingLong} />
       <TeamLine ids={match.team2} playerById={playerById} justPlayed={justPlayed} restingLong={restingLong} />
       <div style={{ fontSize: 12, color: stale ? "var(--bad)" : "var(--muted)", marginTop: 4 }}>
@@ -894,6 +923,7 @@ function ActualQueueSection({
       {queued.map((m, i) => (
         <div key={m.id} className="match-card">
           <div className="court-label">Up #{i + 1}</div>
+          <QualityBadge quality={qualityForMatch(m, playerById)} />
           <TeamLine ids={m.team1} playerById={playerById} />
           <TeamLine ids={m.team2} playerById={playerById} />
           <div className="row" style={{ marginTop: 10 }}>
