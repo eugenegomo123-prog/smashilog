@@ -16,6 +16,10 @@ export const accounts = pgTable("accounts", {
   username: text().notNull().unique(),
   passwordHash: text("password_hash").notNull(),
   passwordSalt: text("password_salt").notNull(),
+  // Self-reported, set once in Account settings (PATCH /api/me/level) and reused
+  // to auto-fill "requested level" every time this account requests to join a
+  // session from then on -- see POST /sessions/:id/players's account branch.
+  level: text().notNull().default("C"), // A-E
   // --- Rating engine (worker/lib/rating.ts) -- all additive, all default to a
   // fresh/unrated starting state so existing accounts need no backfill beyond
   // these defaults. Never written to directly outside worker/lib/ratingIntegration.ts.

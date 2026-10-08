@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { api, TIER_BADGE_IMAGE, rankScore } from "../api";
+import { api, TIER_BADGE_IMAGE, rankScore, LEVELS, LEVEL_ICON, LEVEL_LABEL, type Level } from "../api";
 
 type Tab = "stats" | "rank" | "ranking" | "history" | "account";
 const TABS: Tab[] = ["stats", "rank", "ranking", "history", "account"];
 
 interface MeInfo {
   username: string;
+  level: Level;
   activeParticipation: { sessionId: number; sessionName: string; approved: boolean } | null;
 }
 
@@ -482,6 +483,33 @@ function AccountTab() {
   const [deleteError, setDeleteError] = useState("");
   const [deleting, setDeleting] = useState(false);
 
+  const [level, setLevel] = useState<Level | null>(null);
+  const [levelSaving, setLevelSaving] = useState(false);
+  const [levelError, setLevelError] = useState("");
+  const [levelSuccess, setLevelSuccess] = useState("");
+
+  useEffect(() => {
+    api.getMe().then((me) => setLevel(me.level));
+  }, []);
+
+  async function saveLevel(next: Level) {
+    const previous = level;
+    setLevel(next);
+    setLevelSaving(true);
+    setLevelError("");
+    setLevelSuccess("");
+    try {
+      await api.updateMyLevel(next);
+      setLevelSuccess("Level updated.");
+      setTimeout(() => setLevelSuccess(""), 3000);
+    } catch (err) {
+      setLevel(previous);
+      setLevelError(err instanceof Error ? err.message : "Could not update level");
+    } finally {
+      setLevelSaving(false);
+    }
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -534,6 +562,33 @@ function AccountTab() {
       <div className="card">
         <div style={{ fontSize: 13, color: "var(--muted)" }}>Username</div>
         <div style={{ fontWeight: 700, fontSize: 18 }}>{api.playerUsername()}</div>
+      </div>
+
+      <div className="card">
+        <label>Your level</label>
+        <div className="subtitle" style={{ marginTop: 2, marginBottom: 10 }}>
+          Used to fill in "Requested level" automatically the next time you request to join a session --
+          no more picking it each time.
+        </div>
+        <select
+          value={level ?? "C"}
+          disabled={level === null || levelSaving}
+          onChange={(e) => saveLevel(e.target.value as Level)}
+        >
+          {LEVELS.map((l) => (
+            <option key={l} value={l}>
+              {LEVEL_ICON[l]} {l} · {LEVEL_LABEL[l]}
+            </option>
+          ))}
+        </select>
+        {levelError && (
+          <div className="error-text" style={{ marginTop: 8 }}>
+            {levelError}
+          </div>
+        )}
+        {levelSuccess && (
+          <div style={{ color: "var(--good)", fontSize: 14, marginTop: 8 }}>{levelSuccess}</div>
+        )}
       </div>
 
       <div className="card">

@@ -20,6 +20,7 @@ export default function ParticipantJoin() {
   const [error, setError] = useState("");
   const [requested, setRequested] = useState(false);
   const [accountPlayer, setAccountPlayer] = useState<Player | null | undefined>(undefined);
+  const [accountLevel, setAccountLevel] = useState<Level | null>(null);
 
   useEffect(() => {
     if (isLoggedIn) return;
@@ -35,6 +36,7 @@ export default function ParticipantJoin() {
   useEffect(() => {
     if (!isLoggedIn) return;
     api.getSession(sessionId).then(setSession);
+    api.getMe().then((me) => setAccountLevel(me.level));
     api.getMyPlayerInSession(sessionId).then((p) => {
       setAccountPlayer(p);
       if (p?.approved) navigate(`/session/${sessionId}`);
@@ -64,7 +66,7 @@ export default function ParticipantJoin() {
   async function requestToJoinAsAccount() {
     setError("");
     try {
-      await api.requestToJoinAsAccount(sessionId, level);
+      await api.requestToJoinAsAccount(sessionId);
       setRequested(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to submit request");
@@ -103,15 +105,14 @@ export default function ParticipantJoin() {
           <h1>{session.name}</h1>
         </div>
         <p className="subtitle">Request to join as {api.playerUsername()}.</p>
-        <div>
-          <label>Requested level</label>
-          <select value={level} onChange={(e) => setLevel(e.target.value as Level)}>
-            {LEVELS.map((l) => (
-              <option key={l} value={l}>
-                {LEVEL_ICON[l]} {l} · {LEVEL_LABEL[l]}
-              </option>
-            ))}
-          </select>
+        <div className="card">
+          <div style={{ fontSize: 13, color: "var(--muted)" }}>Your level</div>
+          <div style={{ fontWeight: 700, fontSize: 18, marginTop: 2 }}>
+            {accountLevel ? `${LEVEL_ICON[accountLevel]} ${accountLevel} · ${LEVEL_LABEL[accountLevel]}` : "Loading…"}
+          </div>
+          <div className="subtitle" style={{ marginTop: 6 }}>
+            Set in your account settings -- change it there any time.
+          </div>
         </div>
         {error && (
           <div className="error-text" style={{ marginTop: 12 }}>
@@ -122,7 +123,7 @@ export default function ParticipantJoin() {
           className="btn primary"
           style={{ marginTop: 16 }}
           onClick={requestToJoinAsAccount}
-          disabled={accountPlayer === undefined}
+          disabled={accountPlayer === undefined || accountLevel === null}
         >
           Request to join
         </button>

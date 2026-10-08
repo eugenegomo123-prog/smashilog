@@ -138,8 +138,13 @@ export const api = {
   getMe: () =>
     request<{
       username: string;
+      level: Level;
       activeParticipation: { sessionId: number; sessionName: string; approved: boolean } | null;
     }>("/me"),
+  // Sets the account's own level -- used to auto-fill "requested level" the
+  // next time this account requests to join a session (no more per-join prompt).
+  updateMyLevel: (level: Level) =>
+    request<{ level: Level }>("/me/level", { method: "PATCH", body: JSON.stringify({ level }) }),
   getOverallStats: () =>
     request<{
       sessionsPlayed: number;
@@ -256,10 +261,12 @@ export const api = {
         provisionalGamesThreshold: number;
       };
     }>(`/accounts/${accountId}/profile`),
-  requestToJoinAsAccount: (sessionId: number, requestedLevel: Level) =>
+  // No level to pass here anymore -- the server fills "requested level" in
+  // from the account's own level setting (see updateMyLevel above).
+  requestToJoinAsAccount: (sessionId: number) =>
     request<Player>(`/sessions/${sessionId}/players`, {
       method: "POST",
-      body: JSON.stringify({ requestedLevel }),
+      body: JSON.stringify({}),
     }),
 
   listSessions: () => request<Session[]>("/sessions"),

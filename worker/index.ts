@@ -156,7 +156,29 @@ app.get("/api/me", async (c) => {
     }
   }
 
-  return c.json({ username: account.username, activeParticipation });
+  return c.json({ username: account.username, level: account.level, activeParticipation });
+});
+
+// PATCH /api/me/level -- update this account's self-reported level, used to
+// auto-fill "requested level" the next time this account requests to join a
+// session (see POST /sessions/:id/players below). Doesn't touch any session
+// this account has already joined -- a player row's own `level` only changes
+// when the host approves a (new) request or edits it directly.
+app.patch("/api/me/level", async (c) => {
+  const secret = playerAuthSecret(c.env);
+  const accountId = secret ? await requirePlayer(c.req.raw, secret) : null;
+  if (!accountId) return c.text("Unauthorized", 401);
+  const body = await c.req.json().catch(() => ({}));
+  if (!LEVELS.includes(body.level)) return c.json({ error: "Invalid level" }, 400);
+
+  const db = getDb(c.env.DATABASE_URL);
+  const [updated] = await db
+    .update(accounts)
+    .set({ level: body.level })
+    .where(eq(accounts.id, accountId))
+    .returning();
+  if (!updated) return c.text("Not found", 404);
+  return c.json({ level: updated.level });
 });
 
 // GET /api/me/stats -- totals across every session this account has ever joined.
@@ -467,13 +489,18 @@ app.post("/api/sessions/:id/players", async (c) => {
     const [account] = await db.select().from(accounts).where(eq(accounts.id, accountId));
     if (!account) return c.json({ error: "Account not found" }, 404);
 
+    // Use the account's own level setting rather than anything posted in the
+    // body -- registered players no longer pick a level per-join (see
+    // AccountTab in src/pages/PlayerHome.tsx and ParticipantJoin.tsx).
+    const accountLevel = LEVELS.includes(account.level) ? account.level : "C";
+
     const [created] = await db
       .insert(players)
       .values({
         sessionId,
         name: account.username,
         level: "C",
-        requestedLevel,
+        requestedLevel: accountLevel,
         approved: false,
         // Starts inactive -- joining a session isn't the same as having
         // checked in at the venue. The host flips them to active once
