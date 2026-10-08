@@ -612,8 +612,9 @@ function TeamLine({
             // queued match mixes chill and competitive players, and group
             // like-with-like when building matches themselves.
             const modeIcon = player?.playingMode === "chill" ? "😎" : "🏆";
+            const levelIcon = player ? LEVEL_ICON[player.level] : "";
             const flags = `${justPlayed?.has(id) ? " 🥵" : ""}${restingLong?.has(id) ? " ⏳" : ""}`;
-            return `${modeIcon} ${name}${flags}`;
+            return `${modeIcon} ${levelIcon} ${name}${flags}`;
           })
           .join(" & ")}
       </span>
