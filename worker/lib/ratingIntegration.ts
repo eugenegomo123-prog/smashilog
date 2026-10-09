@@ -114,6 +114,11 @@ export async function rateCompletedMatch(db: Db, matchId: number): Promise<Match
       seasonPoints: account?.seasonPoints ?? 0,
       currentStreak: account?.currentRatingStreak ?? 0,
       playingMode: (p.playingMode === "chill" ? "chill" : "competitive") as PlayingMode,
+      // This player's current, host-approved level for *this session* -- what
+      // drives the rank ceiling/catch-up in rating.ts (see
+      // levelAdjustedGainMultiplier). Deliberately not the self-reported
+      // account-level from Account settings, which the host never verifies.
+      level: p.level,
       recentMeetingsWithOpponents: p.accountId != null ? countMeetings(p.accountId, opponentAccountIds, false) : 0,
       recentMatchesWithTeammate:
         p.accountId != null && teammateAccountId != null

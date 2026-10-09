@@ -19,6 +19,9 @@ import {
   seasonPointsForWin,
   mmrToTier,
   flagSuspiciousActivity,
+  levelAdjustedGainMultiplier,
+  LEVEL_MMR_TARGET,
+  LEVEL_MMR_CAP,
   BASE_MMR,
   RD_START,
   RD_FLOOR,
@@ -222,6 +225,119 @@ describe("flagSuspiciousActivity", () => {
     });
     expect(flags.some((f) => f.includes("opponent"))).toBe(true);
     expect(flags.some((f) => f.includes("Declared level"))).toBe(true);
+  });
+});
+
+describe("levelAdjustedGainMultiplier", () => {
+  it("is a no-op (1x) when the target is Infinity (no level supplied)", () => {
+    expect(levelAdjustedGainMultiplier(1000, Infinity)).toBe(1);
+  });
+
+  it("gives the full catch-up bonus when far below the target", () => {
+    // 349 below C's target (1349) -- comfortably past the 250-point full-bonus gap
+    expect(levelAdjustedGainMultiplier(1000, LEVEL_MMR_TARGET.C)).toBe(1.5);
+  });
+
+  it("is exactly 1x once at or above the target", () => {
+    expect(levelAdjustedGainMultiplier(LEVEL_MMR_TARGET.C, LEVEL_MMR_TARGET.C)).toBe(1);
+    expect(levelAdjustedGainMultiplier(LEVEL_MMR_TARGET.C + 50, LEVEL_MMR_TARGET.C)).toBe(1);
+  });
+
+  it("is exactly 1x once within the final taper gap below the target", () => {
+    // 9 below target -- inside the 50-point taper gap, already back to normal
+    expect(levelAdjustedGainMultiplier(LEVEL_MMR_TARGET.C - 9, LEVEL_MMR_TARGET.C)).toBe(1);
+  });
+
+  it("interpolates smoothly between the taper gap and the full-bonus gap", () => {
+    // 150 below target -- exactly halfway between the 50 and 250 gaps
+    const mult = levelAdjustedGainMultiplier(LEVEL_MMR_TARGET.C - 150, LEVEL_MMR_TARGET.C);
+    expect(mult).toBeCloseTo(1.25, 6);
+  });
+
+  it("A's target (floor of Legend) still grants a catch-up bonus even though A has no ceiling", () => {
+    // A roast-level (A) player stuck around Fledgling should still climb
+    // faster toward Legend -- LEVEL_MMR_CAP.A being Infinity (no ceiling)
+    // doesn't mean LEVEL_MMR_TARGET.A is unused.
+    expect(LEVEL_MMR_CAP.A).toBe(Infinity);
+    expect(Number.isFinite(LEVEL_MMR_TARGET.A)).toBe(true);
+    expect(levelAdjustedGainMultiplier(850, LEVEL_MMR_TARGET.A)).toBe(1.5);
+  });
+});
+
+describe("rateMatch -- level-based rank ceiling and catch-up", () => {
+  it("gives an E-level player no further gain from a win once already at E's ceiling", () => {
+    const result = rateMatch({
+      team1: [
+        calibrated(LEVEL_MMR_CAP.E, { level: "E" }),
+        calibrated(LEVEL_MMR_CAP.E, { level: "E" }),
+      ],
+      team2: [calibrated(700), calibrated(700)],
+      score1: 21,
+      score2: 10,
+    });
+    const capped = result.results.find((r) => r.previousMmr === LEVEL_MMR_CAP.E)!;
+    expect(capped.won).toBe(true);
+    expect(capped.mmrChange).toBe(0);
+    expect(capped.newMmr).toBe(LEVEL_MMR_CAP.E);
+  });
+
+  it("never lets a win push an E-level player's mmr past E's ceiling, even from well below it", () => {
+    const result = rateMatch({
+      team1: [
+        calibrated(LEVEL_MMR_CAP.E - 5, { level: "E" }),
+        calibrated(LEVEL_MMR_CAP.E - 5, { level: "E" }),
+      ],
+      team2: [calibrated(1400), calibrated(1400)], // a big upset, which would normally be a large gain
+      score1: 21,
+      score2: 10,
+    });
+    const winner = result.results.find((r) => r.previousMmr === LEVEL_MMR_CAP.E - 5)!;
+    expect(winner.won).toBe(true);
+    expect(winner.newMmr).toBeLessThanOrEqual(LEVEL_MMR_CAP.E);
+  });
+
+  it("still applies a loss normally even when the player is already at their level's ceiling", () => {
+    const result = rateMatch({
+      team1: [
+        calibrated(LEVEL_MMR_CAP.E, { level: "E" }),
+        calibrated(LEVEL_MMR_CAP.E, { level: "E" }),
+      ],
+      team2: [calibrated(700), calibrated(700)],
+      score1: 10,
+      score2: 21,
+    });
+    const loser = result.results.find((r) => r.previousMmr === LEVEL_MMR_CAP.E)!;
+    expect(loser.won).toBe(false);
+    expect(loser.mmrChange).toBeLessThan(0);
+  });
+
+  it("boosts a win's gain for a high-level player who is far below their appropriate rank", () => {
+    const withLevel = rateMatch({
+      team1: [calibrated(1000, { level: "A" }), calibrated(1000, { level: "A" })],
+      team2: [calibrated(1000), calibrated(1000)],
+      score1: 21,
+      score2: 18,
+    });
+    const withoutLevel = rateMatch({
+      team1: [calibrated(1000), calibrated(1000)],
+      team2: [calibrated(1000), calibrated(1000)],
+      score1: 21,
+      score2: 18,
+    });
+    const boostedGain = withLevel.results.find((r) => r.won)!.mmrChange;
+    const normalGain = withoutLevel.results.find((r) => r.won)!.mmrChange;
+    expect(boostedGain).toBeGreaterThan(normalGain);
+  });
+
+  it("does not affect ratings at all when no level is supplied, for backward compatibility", () => {
+    const result = rateMatch({
+      team1: [calibrated(1000), calibrated(1000)],
+      team2: [calibrated(1000), calibrated(1000)],
+      score1: 21,
+      score2: 18,
+    });
+    const winner = result.results.find((r) => r.won)!;
+    expect(winner.levelAdjustedMultiplier).toBe(1);
   });
 });
 

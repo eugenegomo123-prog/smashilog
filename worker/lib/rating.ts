@@ -25,6 +25,15 @@ export interface RatedPlayer {
   seasonPoints: number;
   currentStreak: number;
   playingMode: PlayingMode;
+  /**
+   * This player's current A-E skill level (the host-approved session level,
+   * not a guest's one-off declared level) -- used only to look up their rank
+   * ceiling/target (see LEVEL_MMR_CAP / LEVEL_MMR_TARGET below). Optional:
+   * when omitted, levelAdjustedGainMultiplier always returns 1 and the
+   * ceiling clamp never applies, so any caller that doesn't supply one keeps
+   * fully uncapped, unboosted behavior -- identical to before this existed.
+   */
+  level?: string;
   /** How many times this account has faced any of today's opponents recently (e.g. last 7 days). Omit or 0 if unknown. */
   recentMeetingsWithOpponents?: number;
   /** How many times this account has partnered with today's teammate recently. Omit or 0 if unknown. */
@@ -52,6 +61,7 @@ export interface PlayerRatingResult {
   kFactor: number;
   marginMultiplier: number;
   antiFarmingMultiplier: number;
+  levelAdjustedMultiplier: number;
   opponentAvgMmr: number;
   teammateMmr: number;
   won: boolean;
@@ -109,6 +119,76 @@ export const GUEST_LEVEL_MMR: Record<string, number> = {
   D: 850,
   E: 700,
 };
+
+// ---- Level-based rank ceiling / catch-up ----
+//
+// The problem: nothing used to stop a registered account's mmr from climbing
+// to Legend regardless of what level the host actually approved them at --
+// which also means setting your own level artificially low (to face easier
+// opponents) had no real downside. The fix is two tables keyed by the
+// player's current *host-approved session level* (never a guest's one-off
+// declared level, and never the self-reported account-level players set in
+// Account settings -- see worker/lib/ratingIntegration.ts for which one is
+// actually threaded through):
+//
+// - LEVEL_MMR_TARGET: the rank each level is "supposed" to be working
+//   towards -- the top of that level's matching tier (see mmrToTier), except
+//   for A, whose target is the *floor* of Legend (Legend itself has no top).
+//   levelAdjustedGainMultiplier boosts MMR gains on wins (up to +50%) the
+//   further below this a player's current mmr is, tapering back down to the
+//   normal 1x rate as they approach it -- this is the "catch-up" half.
+// - LEVEL_MMR_CAP: the hard ceiling a level can never be rated above via a
+//   win (a loss is always applied normally -- this only blocks climbing
+//   further, it's never a floor). Identical to LEVEL_MMR_TARGET for every
+//   level except A, which has no ceiling at all (Infinity) since Legend is
+//   already the top tier.
+//
+// Both tables fall back to Infinity for an unrecognized/missing level, which
+// makes levelAdjustedGainMultiplier a no-op (returns 1) and skips the ceiling
+// clamp entirely -- so a caller that never passes RatedPlayer.level (as in
+// every pre-existing test/usage before this was added) sees no change at all.
+export const LEVEL_MMR_TARGET: Record<string, number> = {
+  E: 1049, // top of Rally
+  D: 1199, // top of Smash
+  C: 1349, // top of Ace
+  B: 1499, // top of Champion
+  A: 1500, // floor of Legend
+};
+export const LEVEL_MMR_CAP: Record<string, number> = {
+  E: 1049,
+  D: 1199,
+  C: 1349,
+  B: 1499,
+  A: Infinity, // Legend has no ceiling
+};
+
+function targetForLevel(level: string | undefined): number {
+  if (!level) return Infinity;
+  return LEVEL_MMR_TARGET[level] ?? Infinity;
+}
+
+function capForLevel(level: string | undefined): number {
+  if (!level) return Infinity;
+  return LEVEL_MMR_CAP[level] ?? Infinity;
+}
+
+const CATCHUP_MAX_BONUS = 0.5; // up to +50% MMR gain far below the target
+const CATCHUP_FULL_GAP = 250; // 250+ points below target => the full bonus
+const CATCHUP_TAPER_GAP = 50; // within 50 points of target (or at/above it) => normal 1x rate
+
+// A single smooth curve: 1 + up to CATCHUP_MAX_BONUS when far below `target`,
+// tapering down to exactly 1 (no bonus, but no penalty either) once within
+// CATCHUP_TAPER_GAP of it or above it. Only ever applied to wins -- the
+// separate hard ceiling (LEVEL_MMR_CAP) is what actually stops further
+// climbing once a player's at the top of their level's range.
+export function levelAdjustedGainMultiplier(currentMmr: number, target: number): number {
+  if (!Number.isFinite(target)) return 1;
+  const distanceBelowTarget = target - currentMmr;
+  if (distanceBelowTarget <= CATCHUP_TAPER_GAP) return 1;
+  if (distanceBelowTarget >= CATCHUP_FULL_GAP) return 1 + CATCHUP_MAX_BONUS;
+  const t = (distanceBelowTarget - CATCHUP_TAPER_GAP) / (CATCHUP_FULL_GAP - CATCHUP_TAPER_GAP);
+  return 1 + CATCHUP_MAX_BONUS * t;
+}
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -222,7 +302,19 @@ function playerResult(
     repeatPenaltyMultiplier(player.recentMeetingsWithOpponents ?? 0),
     repeatPenaltyMultiplier(player.recentMatchesWithTeammate ?? 0),
   );
-  const change = Math.round(base * mult * antiFarming);
+  // Only relevant on a win: a loss is never boosted (no reason to) or capped
+  // (it can't push you over a ceiling), so this stays at 1 for a loss.
+  const levelAdjusted = won ? levelAdjustedGainMultiplier(player.effectiveMmr, targetForLevel(player.level)) : 1;
+  const rawChange = Math.round(base * mult * antiFarming * levelAdjusted);
+
+  // Hard backstop: even with the smooth catch-up/taper curve above, a single
+  // big win could still land past the cap -- this is what actually guarantees
+  // a level can never be rated above its ceiling (Infinity for A, so this is
+  // a no-op there). Never applied to a loss.
+  const uncappedNewMmr = player.effectiveMmr + rawChange;
+  const cap = capForLevel(player.level);
+  const newMmr = won && Number.isFinite(cap) ? Math.min(uncappedNewMmr, cap) : uncappedNewMmr;
+  const change = newMmr - player.effectiveMmr;
 
   const newRd = decayRatingDeviation(player.ratingDeviation);
   const seasonChange = won ? seasonPointsForWin(opponentTeamRating, player.currentStreak) : 0;
@@ -230,7 +322,7 @@ function playerResult(
   return {
     accountId,
     previousMmr: player.effectiveMmr,
-    newMmr: player.effectiveMmr + change,
+    newMmr,
     mmrChange: change,
     previousRatingDeviation: player.ratingDeviation,
     newRatingDeviation: newRd,
@@ -241,6 +333,7 @@ function playerResult(
     kFactor: k,
     marginMultiplier: mult,
     antiFarmingMultiplier: antiFarming,
+    levelAdjustedMultiplier: levelAdjusted,
     opponentAvgMmr: opponentTeamRating,
     teammateMmr,
     won,
