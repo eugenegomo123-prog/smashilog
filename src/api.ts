@@ -231,6 +231,10 @@ export const api = {
         losses: number;
         pointsFor: number;
         pointsAgainst: number;
+        mmr: number;
+        tier: string;
+        division: "I" | "II" | "III" | null;
+        provisional: boolean;
       }[];
     }>(`/me/ranking?scope=${encodeURIComponent(scope)}`).then((r) => r.entries),
   getMyPlayerInSession: (sessionId: number) =>

@@ -103,11 +103,21 @@ interface AccountRankEntry {
   losses: number;
   pointsFor: number;
   pointsAgainst: number;
+  mmr: number;
+  tier: string;
+  division: "I" | "II" | "III" | null;
+  provisional: boolean;
 }
+
+// Highest to lowest -- the order the filter buttons are shown in, and how a
+// ranking list naturally reads (top tier first). Mirrors rating.ts's
+// mmrToTier bands.
+const RANK_DIVISIONS = ["Legend", "Champion", "Ace", "Smash", "Rally", "Fledgling"];
 
 function RankingTab() {
   const [scope, setScope] = useState<string>("all");
   const [entries, setEntries] = useState<AccountRankEntry[] | null>(null);
+  const [divisionFilter, setDivisionFilter] = useState<string | null>(null);
   const me = api.playerUsername();
   const currentMonth = new Date().toISOString().slice(0, 7);
 
@@ -116,9 +126,13 @@ function RankingTab() {
     api.getOverallRanking(scope).then(setEntries);
   }, [scope]);
 
+  // Already sorted by rank first (server-side, see rankAccounts), so this
+  // filter is a pure narrow-down -- no re-sort needed.
+  const visible = divisionFilter ? entries?.filter((e) => e.tier === divisionFilter) ?? null : entries;
+
   return (
     <div>
-      <div className="row" style={{ marginBottom: 16 }}>
+      <div className="row" style={{ marginBottom: 12 }}>
         <button className={`btn ${scope === "all" ? "primary" : ""}`} onClick={() => setScope("all")}>
           All Time
         </button>
@@ -130,27 +144,47 @@ function RankingTab() {
         />
       </div>
 
+      <div className="row" style={{ marginBottom: 16, flexWrap: "wrap", gap: 6 }}>
+        <button className={`btn small ${divisionFilter === null ? "primary" : ""}`} onClick={() => setDivisionFilter(null)}>
+          All ranks
+        </button>
+        {RANK_DIVISIONS.map((tier) => (
+          <button
+            key={tier}
+            className={`btn small ${divisionFilter === tier ? "primary" : ""}`}
+            onClick={() => setDivisionFilter(tier)}
+          >
+            {tier}
+          </button>
+        ))}
+      </div>
+
       {entries === null && <div className="empty-state">Loading…</div>}
       {entries && entries.length === 0 && (
         <div className="empty-state">No games played {scope === "all" ? "yet" : "in that month"}.</div>
       )}
-      {entries && entries.length > 0 && (
+      {entries && entries.length > 0 && visible && visible.length === 0 && (
+        <div className="empty-state">No {divisionFilter} players {scope === "all" ? "yet" : "in that month"}.</div>
+      )}
+      {visible && visible.length > 0 && (
         <div className="table-wrap">
           <table className="ranking">
             <thead>
               <tr>
                 <th>#</th>
                 <th>Player</th>
+                <th>Rank</th>
                 <th>W-L</th>
                 <th>Win%</th>
                 <th>Diff</th>
               </tr>
             </thead>
             <tbody>
-              {entries.map((e, i) => {
+              {visible.map((e, i) => {
                 const winPct = e.gamesPlayed ? Math.round((e.wins / e.gamesPlayed) * 100) : 0;
                 const avgDiff = e.gamesPlayed ? (e.pointsFor - e.pointsAgainst) / e.gamesPlayed : 0;
                 const isMe = e.username === me;
+                const badgeSrc = TIER_BADGE_IMAGE[e.tier] ?? TIER_BADGE_IMAGE.Fledgling;
                 return (
                   <tr key={e.accountId} style={isMe ? { background: "var(--panel-2)", fontWeight: 700 } : undefined}>
                     <td>{i + 1}</td>
@@ -159,6 +193,21 @@ function RankingTab() {
                         {e.username}
                       </Link>
                       {isMe ? " (you)" : ""}
+                    </td>
+                    <td>
+                      <img
+                        src={badgeSrc}
+                        alt=""
+                        style={{ width: 18, height: 18, verticalAlign: "middle", marginRight: 5 }}
+                      />
+                      {e.tier}
+                      {e.division ? ` ${e.division}` : ""}
+                      {e.provisional && (
+                        <span style={{ color: "var(--muted)" }} title="Still calibrating">
+                          {" "}
+                          ?
+                        </span>
+                      )}
                     </td>
                     <td>{e.wins}-{e.losses}</td>
                     <td>{winPct}%</td>

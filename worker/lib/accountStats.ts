@@ -1,8 +1,21 @@
 import { eq, inArray } from "drizzle-orm";
 import type { Db } from "../../db";
 import { accounts, matches, players, sessions } from "../../db/schema";
+import { mmrToTier } from "./rating";
 
 const LEVELS = ["A", "B", "C", "D", "E"];
+
+// Lowest to highest, mirrors the MMR thresholds in rating.ts's mmrToTier --
+// same ordering/scoring as src/api.ts's rankScore (kept duplicated rather than
+// shared, since that one lives in the frontend bundle). Used to sort the
+// Overall Ranking list by rank first, before falling back to win record.
+const TIER_ORDER = ["Fledgling", "Rally", "Smash", "Ace", "Champion", "Legend"];
+
+function tierRank(tier: string, division: "I" | "II" | "III" | null): number {
+  const tierIndex = TIER_ORDER.indexOf(tier);
+  const divisionIndex = division === "I" ? 2 : division === "II" ? 1 : 0; // "III" or null -> 0
+  return tierIndex * 3 + divisionIndex;
+}
 
 // Same ordering as a session's own Ranking tab (win% -> wins -> fewest losses ->
 // avg point diff -> skill level -> name), used here to work out where an account
@@ -90,6 +103,14 @@ export interface AccountRankEntry {
   losses: number;
   pointsFor: number;
   pointsAgainst: number;
+  // This account's current rank (rating.ts's mmrToTier) -- "current" as of
+  // now, not as of whatever session/month this entry's win-loss totals cover.
+  // Same simplification the rest of this module already makes (e.g. username
+  // is also always the current one, not a historical snapshot).
+  mmr: number;
+  tier: string;
+  division: "I" | "II" | "III" | null;
+  provisional: boolean;
 }
 
 // All-time: sum each account's already-stored per-session totals -- fast, and
@@ -99,10 +120,25 @@ export async function computeAllTimeRanking(db: Db): Promise<AccountRankEntry[]>
   const allPlayers = await db.select().from(players);
 
   const byAccount = new Map<number, AccountRankEntry>(
-    allAccounts.map((a) => [
-      a.id,
-      { accountId: a.id, username: a.username, gamesPlayed: 0, wins: 0, losses: 0, pointsFor: 0, pointsAgainst: 0 },
-    ]),
+    allAccounts.map((a) => {
+      const { tier, division, provisional } = mmrToTier(a.mmr, a.ratedGamesPlayed, a.ratingDeviation);
+      return [
+        a.id,
+        {
+          accountId: a.id,
+          username: a.username,
+          gamesPlayed: 0,
+          wins: 0,
+          losses: 0,
+          pointsFor: 0,
+          pointsAgainst: 0,
+          mmr: a.mmr,
+          tier,
+          division,
+          provisional,
+        },
+      ];
+    }),
   );
 
   for (const p of allPlayers) {
@@ -128,7 +164,7 @@ export async function computeMonthRanking(db: Db, month: string): Promise<Accoun
 
   const allAccounts = await db.select().from(accounts);
   const allPlayers = await db.select().from(players);
-  const usernameById = new Map(allAccounts.map((a) => [a.id, a.username]));
+  const accountById = new Map(allAccounts.map((a) => [a.id, a]));
   const accountIdByPlayerId = new Map(
     allPlayers.filter((p) => p.accountId != null).map((p) => [p.id, p.accountId as number]),
   );
@@ -139,7 +175,23 @@ export async function computeMonthRanking(db: Db, month: string): Promise<Accoun
   function entryFor(accountId: number): AccountRankEntry {
     let e = byAccount.get(accountId);
     if (!e) {
-      e = { accountId, username: usernameById.get(accountId) ?? "?", gamesPlayed: 0, wins: 0, losses: 0, pointsFor: 0, pointsAgainst: 0 };
+      const account = accountById.get(accountId);
+      const { tier, division, provisional } = account
+        ? mmrToTier(account.mmr, account.ratedGamesPlayed, account.ratingDeviation)
+        : { tier: "Fledgling", division: null as "I" | "II" | "III" | null, provisional: true };
+      e = {
+        accountId,
+        username: account?.username ?? "?",
+        gamesPlayed: 0,
+        wins: 0,
+        losses: 0,
+        pointsFor: 0,
+        pointsAgainst: 0,
+        mmr: account?.mmr ?? 1000,
+        tier,
+        division,
+        provisional,
+      };
       byAccount.set(accountId, e);
     }
     return e;
@@ -179,11 +231,17 @@ export async function computeMonthRanking(db: Db, month: string): Promise<Accoun
   return [...byAccount.values()];
 }
 
-// Same ranking rules as the per-session tables (win% -> wins -> fewest losses ->
-// avg point diff), minus the skill-level tiebreaker, since level is per-session
+// Ranked by rank/tier first (Legend > Champion > Ace > Smash > Rally >
+// Fledgling, higher division first within a tier) -- same ordering as
+// src/api.ts's rankScore. Within the same tier+division, falls back to the
+// same rules as the per-session tables (win% -> wins -> fewest losses -> avg
+// point diff), minus the skill-level tiebreaker, since level is per-session
 // and an account may have played at different levels across sessions.
 export function rankAccounts(entries: AccountRankEntry[]): AccountRankEntry[] {
   return [...entries].sort((a, b) => {
+    const rankA = tierRank(a.tier, a.division);
+    const rankB = tierRank(b.tier, b.division);
+    if (rankB !== rankA) return rankB - rankA;
     const wpA = a.gamesPlayed ? a.wins / a.gamesPlayed : 0;
     const wpB = b.gamesPlayed ? b.wins / b.gamesPlayed : 0;
     if (wpB !== wpA) return wpB - wpA;
