@@ -650,6 +650,16 @@ function QueueTab({
   const restingLong = restingLongIds(pool);
   const queueFull = queued.length >= 8;
 
+  // Available right now, noticeably behind on games (restingLong), and not
+  // rescued by any of the current suggestions -- the real risk flagged
+  // elsewhere isn't uneven match quality, it's a thin skill level quietly
+  // never making it into a suggestion round after round. A plain "sitting in
+  // the pool" count would just be noise for a big roster (only courtCount's
+  // worth needs to be suggested at once), so this only calls out players who
+  // are both overdue AND currently missing from every suggested match.
+  const suggestedIds = new Set(suggested.flatMap((m) => [...m.team1, ...m.team2]));
+  const sittingOut = pool.filter((p) => restingLong.has(p.id) && !suggestedIds.has(p.id));
+
   return (
     <div>
       <div className="row between" style={{ marginBottom: 8 }}>
@@ -673,6 +683,13 @@ function QueueTab({
       {anyStale && (
         <div className="error-text" style={{ marginBottom: 12 }}>
           Some suggested matches include players who are no longer available — Regenerate to refresh.
+        </div>
+      )}
+
+      {sittingOut.length > 0 && (
+        <div style={{ color: "var(--resting)", fontSize: 14, fontWeight: 600, marginBottom: 12 }}>
+          ⏳ Overdue for a match but not in any suggestion right now: {sittingOut.map((p) => p.name).join(", ")} —
+          consider building them a custom match below.
         </div>
       )}
 
