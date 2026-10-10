@@ -287,6 +287,22 @@ export function mmrToTier(mmr: number, ratedGamesPlayed: number, ratingDeviation
   return { tier: "Fledgling", division: null, provisional };
 }
 
+// Lowest to highest -- used wherever a (tier, division) pair needs a single
+// comparable number instead of the raw MMR behind it (detecting a rank-up,
+// sorting a leaderboard by rank, plotting rank over time): all places that
+// deliberately show a tier, never the hidden number (see mmrToTier's doc
+// comment above and publicRatingView in ratingIntegration.ts). Division only
+// applies to the four middle tiers; Fledgling and Legend pass division: null
+// and compare by tier alone. Mirrors src/api.ts's rankScore (kept duplicated
+// there rather than shared, since that one lives in the frontend bundle).
+const TIER_ORDER = ["Fledgling", "Rally", "Smash", "Ace", "Champion", "Legend"];
+
+export function rankScore(tier: string, division: "I" | "II" | "III" | null): number {
+  const tierIndex = TIER_ORDER.indexOf(tier);
+  const divisionIndex = division === "I" ? 2 : division === "II" ? 1 : 0; // "III" or null -> 0
+  return tierIndex * 3 + divisionIndex;
+}
+
 function playerResult(
   player: RatedPlayer,
   opponentTeamRating: number,

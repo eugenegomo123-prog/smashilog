@@ -16,7 +16,7 @@ import { hashPassword, verifyPassword } from "./lib/passwords";
 import { regenerateQueue } from "./lib/regenerate";
 import { fillOpenCourtsFromQueue, nextQueuePosition, MAX_QUEUE_LENGTH } from "./lib/queue";
 import { playerIdsUnavailable, recomputeSessionStats } from "./lib/stats";
-import { rateCompletedMatch, rollbackMatchRating, publicRatingView } from "./lib/ratingIntegration";
+import { rateCompletedMatch, rollbackMatchRating, publicRatingView, ratingHistoryView } from "./lib/ratingIntegration";
 import { normalizeCourts, resizeCourts, type Court } from "./lib/courts";
 
 // A session row as read from the DB, with courtLabels normalized to the
@@ -266,6 +266,18 @@ app.get("/api/me/rating", async (c) => {
   const [account] = await db.select().from(accounts).where(eq(accounts.id, accountId));
   if (!account) return c.text("Not found", 404);
   return c.json(publicRatingView(account));
+});
+
+// GET /api/me/rating-history -- this account's tier/rank at each rated match
+// over time, for the Rank tab's trend chart. Same "tier, not a number" rule
+// as /api/me/rating above -- see ratingHistoryView's doc comment.
+app.get("/api/me/rating-history", async (c) => {
+  const secret = playerAuthSecret(c.env);
+  const accountId = secret ? await requirePlayer(c.req.raw, secret) : null;
+  if (!accountId) return c.text("Unauthorized", 401);
+  const db = getDb(c.env.DATABASE_URL);
+  const points = await ratingHistoryView(db, accountId);
+  return c.json({ points });
 });
 
 // GET /api/accounts/:id/profile -- another account's public profile (overall

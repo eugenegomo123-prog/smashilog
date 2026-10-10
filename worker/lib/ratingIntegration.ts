@@ -18,6 +18,7 @@ import { accounts, matches, players, ratingHistory } from "../../db/schema";
 import {
   rateMatch,
   mmrToTier,
+  rankScore,
   GUEST_LEVEL_MMR,
   BASE_MMR,
   RD_START,
@@ -282,4 +283,45 @@ export function publicRatingView(account: {
     // hardcoding the threshold a second time -- see rating.ts.
     provisionalGamesThreshold: PROVISIONAL_GAMES_THRESHOLD,
   };
+}
+
+export interface RatingHistoryPoint {
+  endedAt: string;
+  tier: string;
+  division: "I" | "II" | "III" | null;
+  rankScore: number;
+  won: boolean;
+}
+
+// Used by GET /api/me/rating-history -- this account's tier/rank at each of
+// its rated matches, in chronological order, for the Rank tab's trend chart.
+// Derived entirely from the rating_history rows rateCompletedMatch already
+// writes on every rated match -- still never exposes raw mmr (same "hidden
+// MMR, visible tier" rule as publicRatingView above), just the same tier a
+// player already sees elsewhere, plotted across time instead of shown once.
+// Capped to the most recent `limit` points, since a long-running account's
+// full history would make for an unreadable chart.
+export async function ratingHistoryView(db: Db, accountId: number, limit = 50): Promise<RatingHistoryPoint[]> {
+  const rows = await db
+    .select()
+    .from(ratingHistory)
+    .where(eq(ratingHistory.accountId, accountId))
+    .orderBy(asc(ratingHistory.id));
+
+  const points = rows.map((row, i) => {
+    // Row i (0-indexed) is this account's (i+1)-th ever rated match -- exactly
+    // the ratedGamesPlayed count mmrToTier needs for its provisional check,
+    // since rateCompletedMatch increments that same counter by one for every
+    // such row (see the insert above).
+    const tierInfo = mmrToTier(row.newMmr, i + 1, row.newRatingDeviation);
+    return {
+      endedAt: (row.createdAt as unknown as Date).toISOString(),
+      tier: tierInfo.tier,
+      division: tierInfo.division,
+      rankScore: rankScore(tierInfo.tier, tierInfo.division),
+      won: row.won,
+    };
+  });
+
+  return points.slice(-limit);
 }

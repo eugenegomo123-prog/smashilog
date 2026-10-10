@@ -166,6 +166,19 @@ export const api = {
       currentRatingStreak: number;
       provisionalGamesThreshold: number;
     }>("/me/rating"),
+  // This account's tier/rank at each rated match, oldest first -- for the
+  // Rank tab's trend chart. Never raw mmr, same "tier, not a number" rule as
+  // getMyRating above.
+  getRatingHistory: () =>
+    request<{
+      points: {
+        endedAt: string;
+        tier: string;
+        division: "I" | "II" | "III" | null;
+        rankScore: number;
+        won: boolean;
+      }[];
+    }>("/me/rating-history").then((r) => r.points),
   getJoinableSessions: () =>
     request<{ id: number; name: string; playerCount: number; alreadyJoined: boolean; approved: boolean }[]>(
       "/me/joinable-sessions",

@@ -314,6 +314,81 @@ function StatsTab() {
   );
 }
 
+interface RatingHistoryPoint {
+  endedAt: string;
+  tier: string;
+  division: "I" | "II" | "III" | null;
+  rankScore: number;
+  won: boolean;
+}
+
+// rankScore tops out at Legend (see rating.ts) -- fixed so the chart's scale
+// never jumps around as new points come in.
+const MAX_RANK_SCORE = 15;
+const TIER_GRIDLINES: { label: string; score: number }[] = [
+  { label: "Legend", score: 15 },
+  { label: "Champion", score: 12 },
+  { label: "Ace", score: 9 },
+  { label: "Smash", score: 6 },
+  { label: "Rally", score: 3 },
+  { label: "Fledgling", score: 0 },
+];
+
+// Hand-rolled SVG line chart -- no charting library in this project, and a
+// handful of points doesn't need one. Dots are colored win/loss so a losing
+// streak's dip is visible at a glance, not just the overall trend line.
+function RankTrendChart({ points }: { points: RatingHistoryPoint[] }) {
+  const width = 320;
+  const height = 150;
+  const padLeft = 56;
+  const padRight = 10;
+  const padTop = 10;
+  const padBottom = 10;
+  const plotWidth = width - padLeft - padRight;
+  const plotHeight = height - padTop - padBottom;
+
+  const xFor = (i: number) =>
+    padLeft + (points.length > 1 ? (i / (points.length - 1)) * plotWidth : plotWidth / 2);
+  const yFor = (score: number) => padTop + (1 - score / MAX_RANK_SCORE) * plotHeight;
+  const linePoints = points.map((p, i) => `${xFor(i)},${yFor(p.rankScore)}`).join(" ");
+
+  const dateLabel = (iso: string) =>
+    new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+
+  return (
+    <div className="card">
+      <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 8 }}>
+        Rank over time <span>(last {points.length} rated matches)</span>
+      </div>
+      <svg viewBox={`0 0 ${width} ${height}`} style={{ width: "100%", height: "auto", display: "block" }}>
+        {TIER_GRIDLINES.map(({ label, score }) => (
+          <g key={label}>
+            <line
+              x1={padLeft}
+              x2={width - padRight}
+              y1={yFor(score)}
+              y2={yFor(score)}
+              stroke="var(--border)"
+              strokeWidth={1}
+            />
+            <text x={padLeft - 6} y={yFor(score) + 3} fontSize={9} fill="var(--muted)" textAnchor="end">
+              {label}
+            </text>
+          </g>
+        ))}
+        <polyline points={linePoints} fill="none" stroke="var(--accent-2)" strokeWidth={2} />
+        {points.map((p, i) => (
+          <circle key={i} cx={xFor(i)} cy={yFor(p.rankScore)} r={3} fill={p.won ? "var(--good)" : "var(--bad)"} />
+        ))}
+      </svg>
+      <div className="row between" style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>
+        <span>{dateLabel(points[0].endedAt)}</span>
+        <span>{dateLabel(points[points.length - 1].endedAt)}</span>
+      </div>
+    </div>
+  );
+}
+
 // Dedicated rank/tier tab -- the badge art is drawn to glow on a dark
 // background (see .rank-badge-card in styles.css), so it gets its own big,
 // centered showcase here rather than the small inline card this used to be
@@ -322,6 +397,11 @@ function RankTab() {
   const [rating, setRating] = useState<RatingInfo | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [rankUpMessage, setRankUpMessage] = useState<string | null>(null);
+  const [history, setHistory] = useState<RatingHistoryPoint[] | null>(null);
+
+  useEffect(() => {
+    api.getRatingHistory().then(setHistory).catch(() => setHistory([]));
+  }, []);
 
   useEffect(() => {
     api
@@ -385,6 +465,8 @@ function RankTab() {
           </div>
         )}
       </div>
+
+      {history && history.length >= 2 && <RankTrendChart points={history} />}
 
       <div className="card row between">
         <span>Season points</span>
