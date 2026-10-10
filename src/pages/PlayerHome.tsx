@@ -116,6 +116,26 @@ interface AccountRankEntry {
 // mmrToTier bands.
 const RANK_DIVISIONS = ["Legend", "Champion", "Ace", "Smash", "Rally", "Fledgling"];
 
+// Builds a CSV file right in the browser and triggers a download -- no
+// server round-trip needed, since every table this is used from is already
+// fully loaded on the page by the time someone clicks "Download CSV".
+function downloadCsv(filename: string, headers: string[], rows: (string | number)[][]) {
+  const escape = (v: string | number) => {
+    const s = String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const csv = [headers, ...rows].map((row) => row.map(escape).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 function RankingTab() {
   const [scope, setScope] = useState<string>("all");
   const [entries, setEntries] = useState<AccountRankEntry[] | null>(null);
@@ -167,6 +187,31 @@ function RankingTab() {
       )}
       {entries && entries.length > 0 && visible && visible.length === 0 && (
         <div className="empty-state">No {divisionFilter} players {scope === "all" ? "yet" : "in that month"}.</div>
+      )}
+      {visible && visible.length > 0 && (
+        <div className="row" style={{ justifyContent: "flex-end", marginBottom: 8 }}>
+          <button
+            className="btn small"
+            onClick={() =>
+              downloadCsv(
+                `smashilog-ranking-${scope}${divisionFilter ? `-${divisionFilter.toLowerCase()}` : ""}.csv`,
+                ["Rank", "Player", "Tier", "Division", "Wins", "Losses", "Win %", "Point diff"],
+                visible.map((e, i) => [
+                  i + 1,
+                  e.username,
+                  e.tier,
+                  e.division ?? "",
+                  e.wins,
+                  e.losses,
+                  e.gamesPlayed ? Math.round((e.wins / e.gamesPlayed) * 100) : 0,
+                  e.gamesPlayed ? ((e.pointsFor - e.pointsAgainst) / e.gamesPlayed).toFixed(1) : "0.0",
+                ]),
+              )
+            }
+          >
+            ⬇ Download CSV
+          </button>
+        </div>
       )}
       {visible && visible.length > 0 && (
         <div className="table-wrap">
@@ -578,7 +623,21 @@ function SessionDetailView({ sessionId, onBack }: { sessionId: number; onBack: (
         </div>
       </div>
 
-      <h3 style={{ fontSize: 15, color: "var(--muted)", marginTop: 20 }}>Final standings</h3>
+      <div className="row between" style={{ marginTop: 20, alignItems: "baseline" }}>
+        <h3 style={{ fontSize: 15, color: "var(--muted)", margin: 0 }}>Final standings</h3>
+        <button
+          className="btn small"
+          onClick={() =>
+            downloadCsv(
+              `smashilog-${detail.session.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-standings.csv`,
+              ["Rank", "Player", "Wins", "Losses"],
+              detail.ranking.map((p, i) => [i + 1, p.name, p.wins, p.losses]),
+            )
+          }
+        >
+          ⬇ CSV
+        </button>
+      </div>
       <div className="table-wrap">
         <table className="ranking">
           <thead>
