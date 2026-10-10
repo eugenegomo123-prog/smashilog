@@ -19,6 +19,7 @@ import {
   rateMatch,
   mmrToTier,
   rankScore,
+  progressToNextTier,
   GUEST_LEVEL_MMR,
   BASE_MMR,
   RD_START,
@@ -272,6 +273,7 @@ export function publicRatingView(account: {
   currentRatingStreak: number;
 }) {
   const tierInfo = mmrToTier(account.mmr, account.ratedGamesPlayed, account.ratingDeviation);
+  const progress = progressToNextTier(account.mmr);
   return {
     tier: tierInfo.tier,
     division: tierInfo.division,
@@ -282,6 +284,11 @@ export function publicRatingView(account: {
     // Sent so the client can render "X of Y rated games played" without
     // hardcoding the threshold a second time -- see rating.ts.
     provisionalGamesThreshold: PROVISIONAL_GAMES_THRESHOLD,
+    // A plain 0-100 percent toward the next tier, for a progress bar --
+    // never the raw mmr itself (see progressToNextTier's doc comment).
+    // nextTier is null once there's nowhere left to climb (already Legend).
+    progressPercent: progress.percent,
+    nextTier: progress.nextTier,
   };
 }
 

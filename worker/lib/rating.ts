@@ -303,6 +303,36 @@ export function rankScore(tier: string, division: "I" | "II" | "III" | null): nu
   return tierIndex * 3 + divisionIndex;
 }
 
+// Same tier floors as mmrToTier (plus one virtual floor 150 points below
+// Rally, purely so Fledgling gets a meaningful bar instead of always reading
+// "0%"), reduced to a plain 0-100 percent of the way to the next tier up --
+// never the raw mmr itself, same "tier, not a number" rule as mmrToTier.
+// nextTier is null once there's nowhere left to climb (already Legend).
+const TIER_FLOORS: [string, number][] = [
+  ["Fledgling", 750],
+  ["Rally", 900],
+  ["Smash", 1050],
+  ["Ace", 1200],
+  ["Champion", 1350],
+  ["Legend", 1500],
+];
+
+export function progressToNextTier(mmr: number): { percent: number; nextTier: string | null } {
+  if (mmr >= 1500) return { percent: 100, nextTier: null };
+
+  for (let i = TIER_FLOORS.length - 2; i >= 0; i--) {
+    const [, floor] = TIER_FLOORS[i];
+    if (mmr >= floor) {
+      const [nextTier, nextFloor] = TIER_FLOORS[i + 1];
+      const percent = Math.round(((mmr - floor) / (nextFloor - floor)) * 100);
+      return { percent: clamp(percent, 0, 100), nextTier };
+    }
+  }
+  // Below even the virtual Fledgling floor -- an empty bar, still climbing
+  // toward Rally.
+  return { percent: 0, nextTier: TIER_FLOORS[1][0] };
+}
+
 function playerResult(
   player: RatedPlayer,
   opponentTeamRating: number,

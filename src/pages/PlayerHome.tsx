@@ -38,6 +38,8 @@ interface RatingInfo {
   ratedGamesPlayed: number;
   currentRatingStreak: number;
   provisionalGamesThreshold: number;
+  progressPercent: number;
+  nextTier: string | null;
 }
 
 export default function PlayerHome() {
@@ -452,6 +454,25 @@ function RankTab() {
           {rating.tier}
           {rating.division ? ` ${rating.division}` : ""}
         </div>
+        {rating.nextTier ? (
+          <div style={{ marginTop: 14, width: "100%", maxWidth: 220 }}>
+            <div style={{ height: 8, borderRadius: 999, background: "rgba(255,255,255,0.25)", overflow: "hidden" }}>
+              <div
+                style={{
+                  height: "100%",
+                  width: `${rating.progressPercent}%`,
+                  background: "var(--accent)",
+                  borderRadius: 999,
+                }}
+              />
+            </div>
+            <div style={{ fontSize: 12, color: "#d8cdbe", marginTop: 6 }}>
+              {rating.progressPercent}% of the way to {rating.nextTier}
+            </div>
+          </div>
+        ) : (
+          <div style={{ fontSize: 13, color: "#ffd27a", marginTop: 10, fontWeight: 700 }}>🏆 Top rank reached!</div>
+        )}
         {rating.provisional && (
           <div style={{ fontSize: 13, color: "#d8cdbe", marginTop: 4 }}>
             {rating.ratedGamesPlayed < rating.provisionalGamesThreshold

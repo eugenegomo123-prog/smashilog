@@ -165,6 +165,10 @@ export const api = {
       ratedGamesPlayed: number;
       currentRatingStreak: number;
       provisionalGamesThreshold: number;
+      // 0-100, toward nextTier -- never the raw mmr itself. nextTier is null
+      // once there's nowhere left to climb (already Legend).
+      progressPercent: number;
+      nextTier: string | null;
     }>("/me/rating"),
   // This account's tier/rank at each rated match, oldest first -- for the
   // Rank tab's trend chart. Never raw mmr, same "tier, not a number" rule as
