@@ -1396,8 +1396,12 @@ function SettingsTab({ session, onChanged }: { session: Session; onChanged: () =
           className="btn danger"
           onClick={async () => {
             if (!confirm(`Delete "${session.name}" and all its data? This cannot be undone.`)) return;
-            await api.deleteSession(session.id);
-            navigate("/host/sessions");
+            try {
+              await api.deleteSession(session.id);
+              navigate("/host/sessions");
+            } catch (err) {
+              alert(err instanceof Error ? err.message : "Could not delete this session");
+            }
           }}
         >
           Delete session

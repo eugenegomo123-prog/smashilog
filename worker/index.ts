@@ -431,6 +431,17 @@ app.delete("/api/sessions/:id", async (c) => {
   if (!Number.isFinite(id)) return c.text("Invalid session id", 400);
   if (!(await requireHost(c.req.raw, hostSecret(c.env)))) return c.text("Unauthorized", 401);
   const db = getDb(c.env.DATABASE_URL);
+  // Any match a registered account played and that got rated left a row in
+  // rating_history (worker/lib/ratingIntegration.ts's rateCompletedMatch),
+  // which has a NOT NULL foreign key on match_id. Deleting the matches below
+  // without clearing these first throws a FK violation and aborts the whole
+  // delete -- so any session with at least one rated match could never be
+  // deleted. Clear those rows first.
+  const sessionMatches = await db.select({ id: matches.id }).from(matches).where(eq(matches.sessionId, id));
+  const matchIds = sessionMatches.map((m) => m.id);
+  if (matchIds.length > 0) {
+    await db.delete(ratingHistory).where(inArray(ratingHistory.matchId, matchIds));
+  }
   await db.delete(matches).where(eq(matches.sessionId, id));
   await db.delete(players).where(eq(players.sessionId, id));
   await db.delete(sessions).where(eq(sessions.id, id));
