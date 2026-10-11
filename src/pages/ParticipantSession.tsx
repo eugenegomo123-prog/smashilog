@@ -215,7 +215,16 @@ export default function ParticipantSession() {
         <span className={`badge ${session.status === "active" ? "active" : "ended"}`}>{session.status}</span>
       </div>
 
-      {tab === "dashboard" && me && <DashboardTab player={me} players={players} onChanged={load} />}
+      {tab === "dashboard" && me && (
+        <DashboardTab
+          player={me}
+          players={players}
+          ongoing={matchData.ongoing}
+          queued={matchData.queued}
+          courtLabels={session.courtLabels}
+          onChanged={load}
+        />
+      )}
       {tab === "ongoing" && (
         <OngoingTab matches={matchData.ongoing} courtLabels={session.courtLabels} playerById={playerById} myId={myId} />
       )}
@@ -240,16 +249,130 @@ export default function ParticipantSession() {
   );
 }
 
+type MyStatus =
+  | { kind: "pending" }
+  | { kind: "onCourt"; courtLabel: string; teammateName: string | null }
+  | { kind: "queued"; position: number; total: number }
+  | { kind: "resting" }
+  | { kind: "inactive" }
+  | { kind: "unassigned" };
+
+// Where this player stands right now, checked in priority order: pending
+// approval outranks everything else (nothing matters until the host lets
+// them in), then actually being on a court, then queued for one, then their
+// own resting/inactive choice, and only then "active, but not picked yet."
+function myCurrentStatus(
+  player: Player,
+  players: Player[],
+  ongoing: Match[],
+  queued: Match[],
+  courtLabels: Court[],
+): MyStatus {
+  if (!player.approved) return { kind: "pending" };
+
+  const myMatch = ongoing.find((m) => [...m.team1, ...m.team2].includes(player.id));
+  if (myMatch) {
+    const myTeam = myMatch.team1.includes(player.id) ? myMatch.team1 : myMatch.team2;
+    const teammateId = myTeam.find((id) => id !== player.id);
+    const teammate = teammateId != null ? players.find((p) => p.id === teammateId) : undefined;
+    return { kind: "onCourt", courtLabel: liveCourtLabel(courtLabels, myMatch), teammateName: teammate?.name ?? null };
+  }
+
+  const queueIndex = queued.findIndex((m) => [...m.team1, ...m.team2].includes(player.id));
+  if (queueIndex !== -1) return { kind: "queued", position: queueIndex + 1, total: queued.length };
+
+  if (player.status === "resting") return { kind: "resting" };
+  if (player.status === "inactive") return { kind: "inactive" };
+  return { kind: "unassigned" };
+}
+
+// Visual language: green = go now, amber = the system's working on it (queued,
+// pending, or just not picked yet), gray = sitting out by your own choice.
+function statusColors(status: MyStatus): { bg: string; fg: string } {
+  switch (status.kind) {
+    case "onCourt":
+      return { bg: "var(--good-bg)", fg: "var(--good)" };
+    case "resting":
+    case "inactive":
+      return { bg: "var(--inactive-bg)", fg: "var(--inactive)" };
+    case "pending":
+      return { bg: "#ffe1b3", fg: "#8a4b00" };
+    case "queued":
+    case "unassigned":
+      return { bg: "var(--resting-bg)", fg: "var(--resting)" };
+  }
+}
+
+function StatusCardBody({ status }: { status: MyStatus }) {
+  switch (status.kind) {
+    case "onCourt":
+      return (
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.03 }}>🏸 ON COURT NOW</div>
+          <div style={{ fontSize: 22, fontWeight: 800, marginTop: 2 }}>Head to {status.courtLabel}</div>
+          {status.teammateName && (
+            <div style={{ fontSize: 13, color: "var(--text)", marginTop: 4 }}>Playing with {status.teammateName}</div>
+          )}
+        </div>
+      );
+    case "queued":
+      return (
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.03 }}>⏳ QUEUED</div>
+          <div style={{ fontSize: 22, fontWeight: 800, marginTop: 2 }}>#{status.position} in line</div>
+          <div style={{ fontSize: 13, color: "var(--text)", marginTop: 4 }}>
+            {status.position === 1
+              ? "You're next — get ready!"
+              : `${status.position - 1} match${status.position - 1 === 1 ? "" : "es"} ahead of you`}
+          </div>
+        </div>
+      );
+    case "pending":
+      return (
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.03 }}>⏳ PENDING APPROVAL</div>
+          <div style={{ fontSize: 16, fontWeight: 700, marginTop: 2 }}>Waiting for the host to approve you</div>
+        </div>
+      );
+    case "resting":
+    case "inactive": {
+      const label = status.kind === "resting" ? "Resting" : "Inactive";
+      return (
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.03 }}>💤 {label.toUpperCase()}</div>
+          <div style={{ fontSize: 16, fontWeight: 700, marginTop: 2 }}>
+            Set to {label.toLowerCase()} — switch to Active below to join the rotation
+          </div>
+        </div>
+      );
+    }
+    case "unassigned":
+      return (
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.03 }}>⏳ NOT ASSIGNED YET</div>
+          <div style={{ fontSize: 16, fontWeight: 700, marginTop: 2 }}>The host hasn't sent you to a court yet</div>
+        </div>
+      );
+  }
+}
+
 function DashboardTab({
   player,
   players,
+  ongoing,
+  queued,
+  courtLabels,
   onChanged,
 }: {
   player: Player;
   players: Player[];
+  ongoing: Match[];
+  queued: Match[];
+  courtLabels: Court[];
   onChanged: () => void;
 }) {
-  const winPct = player.gamesPlayed ? Math.round((player.wins / player.gamesPlayed) * 100) : 0;
+  const status = myCurrentStatus(player, players, ongoing, queued, courtLabels);
+  const { bg, fg } = statusColors(status);
   const others = players
     .filter((p) => p.approved && p.id !== player.id)
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -260,11 +383,8 @@ function DashboardTab({
         <div style={{ fontSize: 13, color: "var(--muted)" }}>Signed in as</div>
         <div style={{ fontSize: 20, fontWeight: 700 }}>{player.name}</div>
       </div>
-      <div className="card row between">
-        <div>
-          <div style={{ fontSize: 28, fontWeight: 700 }}>{winPct}%</div>
-          <div style={{ fontSize: 13, color: "var(--muted)" }}>Win rate · {player.wins}W-{player.losses}L</div>
-        </div>
+      <div className="card row between" style={{ background: bg, color: fg, alignItems: "center" }}>
+        <StatusCardBody status={status} />
         <div className="level-pill" style={{ width: 44, height: 44, fontSize: 22 }} title={LEVEL_LABEL[player.level]}>{LEVEL_ICON[player.level]}</div>
       </div>
       <div className="card">
