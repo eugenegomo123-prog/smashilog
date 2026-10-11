@@ -927,6 +927,7 @@ function ActualQueueSection({
   }
 
   async function remove(matchId: number) {
+    if (!confirm("Remove this match from the queue? These players will go back into the pool.")) return;
     setBusyId(matchId);
     try {
       await api.deleteMatch(matchId);
