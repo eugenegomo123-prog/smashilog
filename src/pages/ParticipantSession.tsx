@@ -6,6 +6,7 @@ import {
   LEVEL_ICON,
   LEVEL_LABEL,
   liveCourtLabel,
+  playerPictureUrl,
   type Level,
   type Match,
   type Player,
@@ -249,9 +250,88 @@ export default function ParticipantSession() {
   );
 }
 
+// A round profile picture, falling back to initials-on-a-circle when the
+// player has no photo (or it fails to load) -- the dedicated picture route
+// 404s in that case, which this treats as just another load failure.
+function Avatar({ player, size = 48 }: { player: Player | undefined; size?: number }) {
+  const [failed, setFailed] = useState(false);
+  const name = player?.name ?? "?";
+  const initials =
+    name
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((word) => word[0]?.toUpperCase() ?? "")
+      .join("") || "?";
+  const style = { width: size, height: size, fontSize: Math.round(size * 0.36) };
+  if (!player || failed) {
+    return (
+      <div className="avatar" style={style}>
+        {initials}
+      </div>
+    );
+  }
+  return (
+    <img
+      className="avatar"
+      style={style}
+      src={playerPictureUrl(player)}
+      alt={name}
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+function TeamColumn({
+  ids,
+  playerById,
+  size,
+}: {
+  ids: number[];
+  playerById: (id: number) => Player | undefined;
+  size: number;
+}) {
+  return (
+    <div className="matchup-team">
+      {ids.map((id) => {
+        const p = playerById(id);
+        return (
+          <div className="matchup-player" key={id}>
+            <Avatar player={p} size={size} />
+            <span className="matchup-name">{p?.name ?? "?"}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// The "2 circles stacked, VS in the middle, 2 more circles stacked, names
+// under each picture" matchup display -- shared by the Dashboard tab's "your
+// match right now" card and the Courts tab's list of every match in play.
+function Matchup({
+  team1,
+  team2,
+  playerById,
+  size = 48,
+}: {
+  team1: number[];
+  team2: number[];
+  playerById: (id: number) => Player | undefined;
+  size?: number;
+}) {
+  return (
+    <div className="matchup">
+      <TeamColumn ids={team1} playerById={playerById} size={size} />
+      <div className="matchup-vs">VS</div>
+      <TeamColumn ids={team2} playerById={playerById} size={size} />
+    </div>
+  );
+}
+
 type MyStatus =
   | { kind: "pending" }
-  | { kind: "onCourt"; courtLabel: string; teammateName: string | null }
+  | { kind: "onCourt"; courtLabel: string; match: Match }
   | { kind: "queued"; position: number; total: number }
   | { kind: "resting" }
   | { kind: "inactive" }
@@ -261,21 +341,12 @@ type MyStatus =
 // approval outranks everything else (nothing matters until the host lets
 // them in), then actually being on a court, then queued for one, then their
 // own resting/inactive choice, and only then "active, but not picked yet."
-function myCurrentStatus(
-  player: Player,
-  players: Player[],
-  ongoing: Match[],
-  queued: Match[],
-  courtLabels: Court[],
-): MyStatus {
+function myCurrentStatus(player: Player, ongoing: Match[], queued: Match[], courtLabels: Court[]): MyStatus {
   if (!player.approved) return { kind: "pending" };
 
   const myMatch = ongoing.find((m) => [...m.team1, ...m.team2].includes(player.id));
   if (myMatch) {
-    const myTeam = myMatch.team1.includes(player.id) ? myMatch.team1 : myMatch.team2;
-    const teammateId = myTeam.find((id) => id !== player.id);
-    const teammate = teammateId != null ? players.find((p) => p.id === teammateId) : undefined;
-    return { kind: "onCourt", courtLabel: liveCourtLabel(courtLabels, myMatch), teammateName: teammate?.name ?? null };
+    return { kind: "onCourt", courtLabel: liveCourtLabel(courtLabels, myMatch), match: myMatch };
   }
 
   const queueIndex = queued.findIndex((m) => [...m.team1, ...m.team2].includes(player.id));
@@ -310,9 +381,6 @@ function StatusCardBody({ status }: { status: MyStatus }) {
         <div>
           <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.03 }}>🏸 ON COURT NOW</div>
           <div style={{ fontSize: 22, fontWeight: 800, marginTop: 2 }}>Head to {status.courtLabel}</div>
-          {status.teammateName && (
-            <div style={{ fontSize: 13, color: "var(--text)", marginTop: 4 }}>Playing with {status.teammateName}</div>
-          )}
         </div>
       );
     case "queued":
@@ -356,6 +424,34 @@ function StatusCardBody({ status }: { status: MyStatus }) {
   }
 }
 
+// Reads a selected photo, center-crops it to a square, and shrinks it to
+// size×size -- keeps the uploaded data: URL small (a few tens of KB) without
+// asking a non-technical host or player to resize anything themselves.
+async function compressImageFile(file: File, size = 320): Promise<string> {
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error("Could not read that file"));
+    reader.readAsDataURL(file);
+  });
+  const img = new Image();
+  await new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve();
+    img.onerror = () => reject(new Error("That doesn't look like an image"));
+    img.src = dataUrl;
+  });
+  const side = Math.min(img.width, img.height);
+  const sx = (img.width - side) / 2;
+  const sy = (img.height - side) / 2;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Could not process that image");
+  ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
+  return canvas.toDataURL("image/jpeg", 0.82);
+}
+
 function DashboardTab({
   player,
   players,
@@ -371,11 +467,42 @@ function DashboardTab({
   courtLabels: Court[];
   onChanged: () => void;
 }) {
-  const status = myCurrentStatus(player, players, ongoing, queued, courtLabels);
+  const status = myCurrentStatus(player, ongoing, queued, courtLabels);
   const { bg, fg } = statusColors(status);
+  const playerById = (id: number) => players.find((p) => p.id === id);
   const others = players
     .filter((p) => p.approved && p.id !== player.id)
     .sort((a, b) => a.name.localeCompare(b.name));
+
+  const [uploading, setUploading] = useState(false);
+  const [pictureError, setPictureError] = useState("");
+
+  async function handlePictureChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setPictureError("");
+    setUploading(true);
+    try {
+      const dataUrl = await compressImageFile(file);
+      await api.updatePlayer(player.id, { profilePicture: dataUrl });
+      onChanged();
+    } catch (err) {
+      setPictureError(err instanceof Error ? err.message : "Could not upload that picture");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function removePicture() {
+    setUploading(true);
+    try {
+      await api.updatePlayer(player.id, { profilePicture: null });
+      onChanged();
+    } finally {
+      setUploading(false);
+    }
+  }
 
   return (
     <div className="stack">
@@ -386,6 +513,34 @@ function DashboardTab({
       <div className="card row between" style={{ background: bg, color: fg, alignItems: "center" }}>
         <StatusCardBody status={status} />
         <div className="level-pill" style={{ width: 44, height: 44, fontSize: 22 }} title={LEVEL_LABEL[player.level]}>{LEVEL_ICON[player.level]}</div>
+      </div>
+      {status.kind === "onCourt" && (
+        <div className="card">
+          <label>Your match</label>
+          <Matchup team1={status.match.team1} team2={status.match.team2} playerById={playerById} size={56} />
+        </div>
+      )}
+      <div className="card row" style={{ alignItems: "center" }}>
+        <Avatar player={player} size={64} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <label style={{ marginBottom: 6 }}>Profile picture</label>
+          <div className="row" style={{ gap: 8 }}>
+            <label className="btn small" style={{ cursor: "pointer" }}>
+              {uploading ? "Uploading…" : "Change photo"}
+              <input
+                type="file"
+                accept="image/*"
+                style={{ display: "none" }}
+                onChange={handlePictureChange}
+                disabled={uploading}
+              />
+            </label>
+            <button type="button" className="btn small" onClick={removePicture} disabled={uploading}>
+              Remove
+            </button>
+          </div>
+          {pictureError && <div className="error-text" style={{ marginTop: 6 }}>{pictureError}</div>}
+        </div>
       </div>
       <div className="card">
         <label>My level</label>
@@ -472,12 +627,7 @@ function OngoingTab({
             <div className="court-label">
               {liveCourtLabel(courtLabels, m)} · started {timeAgo(m.startedAt)}
             </div>
-            <div className="team-row">
-              <span>{m.team1.map((id) => playerById(id)?.name ?? "?").join(" & ")}</span>
-            </div>
-            <div className="team-row">
-              <span>{m.team2.map((id) => playerById(id)?.name ?? "?").join(" & ")}</span>
-            </div>
+            <Matchup team1={m.team1} team2={m.team2} playerById={playerById} size={44} />
           </div>
         );
       })}

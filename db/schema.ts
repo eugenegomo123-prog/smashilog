@@ -83,6 +83,21 @@ export const players = pgTable("players", {
   // Set when this player row belongs to a registered account rather than a guest.
   // Guests (today's flow) leave this null, unchanged.
   accountId: integer("account_id").references(() => accounts.id),
+  // Self-service photo (PATCH /api/players/:id), stored as a full data: URL
+  // (e.g. "data:image/jpeg;base64,..."). Deliberately NOT selected by GET
+  // /sessions/:id/players -- the bulk roster list every device polls every
+  // few seconds -- since that would multiply this payload by every player's
+  // photo on every poll tick. It's served on its own instead, by GET
+  // /api/players/:id/picture (see worker/index.ts), which is what <img> tags
+  // point at.
+  profilePicture: text("profile_picture"),
+  // Bumped (to the current time) every time profilePicture above changes.
+  // Small and cheap enough to include in the bulk roster list, unlike the
+  // picture itself -- its only job is to give <img> tags a cache-busting
+  // query param (?v=...) so a new photo doesn't keep showing the old one
+  // from browser cache under the same player id. See playerPictureUrl in
+  // src/api.ts.
+  pictureUpdatedAt: timestamp("picture_updated_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

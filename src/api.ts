@@ -41,7 +41,24 @@ export interface Player {
   // belongs to a registered account (see db/schema.ts). Used client-side only
   // to decide whether a "reset password" action makes sense for this player.
   accountId: number | null;
+  // When this player's profile picture last changed, or null if they've never
+  // set one. The actual image is never in this object (see db/schema.ts's
+  // profilePicture comment) -- this is only here so playerPictureUrl below can
+  // cache-bust correctly. Always present, even on the bulk roster list.
+  pictureUpdatedAt: string | null;
   createdAt: string;
+}
+
+// The <img src> for a player's uploaded photo -- never the raw image data,
+// which this app deliberately keeps out of every bulk player list (see
+// db/schema.ts). Points at a dedicated route that 404s if they haven't set
+// one; pair with an onError fallback (ParticipantSession.tsx's Avatar does
+// this). The ?v= query string changes exactly when the photo does, so the
+// browser can cache each version of it forever instead of re-fetching on
+// every poll.
+export function playerPictureUrl(player: Player): string {
+  const base = `/api/players/${player.id}/picture`;
+  return player.pictureUpdatedAt ? `${base}?v=${encodeURIComponent(player.pictureUpdatedAt)}` : base;
 }
 
 export interface Match {
@@ -318,7 +335,12 @@ export const api = {
     }),
   updatePlayer: (
     id: number,
-    updates: Partial<Pick<Player, "level" | "status" | "approved" | "name" | "preferredPartnerId" | "playingMode">>,
+    updates: Partial<Pick<Player, "level" | "status" | "approved" | "name" | "preferredPartnerId" | "playingMode">> & {
+      // A full "data:image/...;base64,..." string to set a new photo, or null
+      // to remove it. Not on the Player type itself -- see playerPictureUrl's
+      // comment above for why the image data never round-trips through here.
+      profilePicture?: string | null;
+    },
   ) => request<Player>(`/players/${id}`, { method: "PATCH", body: JSON.stringify(updates) }),
   removePlayer: (id: number) => request<{ ok: true }>(`/players/${id}`, { method: "DELETE" }),
   // Host-only: set a brand-new password for a registered player's account.

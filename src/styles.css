@@ -571,6 +571,65 @@ table.ranking th {
   z-index: 5;
 }
 
+/* A player's profile picture (or an initials fallback -- see Avatar in
+   ParticipantSession.tsx), and the "2 stacked circles, VS, 2 more circles"
+   layout it's used in for a match's two teams. */
+.avatar {
+  border-radius: 50%;
+  object-fit: cover;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-weight: 700;
+  color: var(--accent-dark);
+  background: linear-gradient(160deg, #f3f3f3, #d5d9de);
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.08);
+}
+
+.matchup {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 6px 0 2px;
+}
+
+.matchup-team {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.matchup-player {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+}
+
+.matchup-name {
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  max-width: 88px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.matchup-vs {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--muted);
+  flex-shrink: 0;
+  padding: 0 2px;
+}
+
 .empty-state {
   color: var(--muted);
   text-align: center;

@@ -479,12 +479,66 @@ app.patch("/api/sessions/:id/courts/:courtId", async (c) => {
 });
 
 // GET/POST /api/sessions/:id/players
+// Every players column except profilePicture itself -- this is what the bulk
+// roster list below returns. profilePicture holds a full base64 image, and
+// this route is polled by every connected device every few seconds, so
+// including it here would multiply that payload by every player's photo on
+// every poll tick. pictureUpdatedAt (tiny, just a timestamp) still comes
+// through, which is all a client needs to build the right <img> URL -- see
+// GET /api/players/:id/picture below and playerPictureUrl in src/api.ts.
+const PLAYER_LIST_COLUMNS = {
+  id: players.id,
+  sessionId: players.sessionId,
+  name: players.name,
+  level: players.level,
+  requestedLevel: players.requestedLevel,
+  status: players.status,
+  playingMode: players.playingMode,
+  approved: players.approved,
+  wins: players.wins,
+  losses: players.losses,
+  pointsFor: players.pointsFor,
+  pointsAgainst: players.pointsAgainst,
+  currentStreak: players.currentStreak,
+  gamesPlayed: players.gamesPlayed,
+  lastMatchEndedAt: players.lastMatchEndedAt,
+  preferredPartnerId: players.preferredPartnerId,
+  accountId: players.accountId,
+  pictureUpdatedAt: players.pictureUpdatedAt,
+  createdAt: players.createdAt,
+};
+
 app.get("/api/sessions/:id/players", async (c) => {
   const sessionId = Number(c.req.param("id"));
   if (!Number.isFinite(sessionId)) return c.text("Invalid session id", 400);
   const db = getDb(c.env.DATABASE_URL);
-  const list = await db.select().from(players).where(eq(players.sessionId, sessionId));
+  const list = await db.select(PLAYER_LIST_COLUMNS).from(players).where(eq(players.sessionId, sessionId));
   return c.json(list);
+});
+
+// GET /api/players/:id/picture -- serves a player's uploaded photo as a real
+// image response (not JSON), decoded from the data: URL stored in
+// profilePicture. Public/unauthenticated like the rest of this app's reads
+// (see AGENTS.md's "no per-player identity check" simplification). ?v=... in
+// the URL (see playerPictureUrl in src/api.ts) changes every time the photo
+// does, so this can be cached essentially forever under that exact URL.
+app.get("/api/players/:id/picture", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isFinite(id)) return c.text("Invalid player id", 400);
+  const db = getDb(c.env.DATABASE_URL);
+  const [row] = await db.select({ profilePicture: players.profilePicture }).from(players).where(eq(players.id, id));
+  const dataUrl = row?.profilePicture;
+  if (!dataUrl) return c.text("Not found", 404);
+  const match = /^data:([^;,]+);base64,([\s\S]*)$/.exec(dataUrl);
+  if (!match) return c.text("Not found", 404);
+  const [, mimeType, base64Data] = match;
+  const bytes = Uint8Array.from(atob(base64Data), (ch) => ch.charCodeAt(0));
+  return new Response(bytes, {
+    headers: {
+      "Content-Type": mimeType,
+      "Cache-Control": c.req.query("v") ? "public, max-age=31536000, immutable" : "public, max-age=60",
+    },
+  });
 });
 
 app.post("/api/sessions/:id/players", async (c) => {
@@ -763,6 +817,24 @@ app.patch("/api/players/:id", async (c) => {
       return c.json({ error: "Unknown player" }, 400);
     }
     updates.preferredPartnerId = partnerId;
+  }
+  if (body.profilePicture === null) {
+    updates.profilePicture = null;
+    updates.pictureUpdatedAt = new Date();
+  } else if (typeof body.profilePicture === "string") {
+    // Client-side upload already resizes/compresses to a small square JPEG
+    // before this ever gets sent -- this length cap (roughly 450KB of raw
+    // image bytes once base64's ~33% overhead is backed out) is just a
+    // server-side backstop against a buggy or bypassed client, not the
+    // normal path.
+    if (!/^data:image\/(png|jpe?g|webp|gif);base64,/.test(body.profilePicture)) {
+      return c.json({ error: "Profile picture must be an image" }, 400);
+    }
+    if (body.profilePicture.length > 600_000) {
+      return c.json({ error: "That picture is too large" }, 400);
+    }
+    updates.profilePicture = body.profilePicture;
+    updates.pictureUpdatedAt = new Date();
   }
 
   // Host-only: approve join requests, override level/status/name.
