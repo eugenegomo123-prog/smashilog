@@ -38,24 +38,29 @@ export interface Player {
   lastMatchEndedAt: string | null;
   preferredPartnerId: number | null;
   // Null for a guest (today's default join flow); set when this player row
-  // belongs to a registered account (see db/schema.ts). Used client-side only
-  // to decide whether a "reset password" action makes sense for this player.
+  // belongs to a registered account (see db/schema.ts). Used client-side to
+  // decide whether a "reset password" action makes sense for this player, and
+  // -- since only a registered account can have a profile picture -- whether
+  // to even try showing or uploading one for them at all.
   accountId: number | null;
-  // When this player's profile picture last changed, or null if they've never
-  // set one. The actual image is never in this object (see db/schema.ts's
-  // profilePicture comment) -- this is only here so playerPictureUrl below can
-  // cache-bust correctly. Always present, even on the bulk roster list.
+  // When this player's account last changed its profile picture, or null if
+  // it never set one (or this is a guest with no account). The actual image
+  // is never in this object (see db/schema.ts's accounts.profilePicture
+  // comment) -- this is only here so playerPictureUrl below can cache-bust
+  // correctly. Always present, even on the bulk roster list.
   pictureUpdatedAt: string | null;
   createdAt: string;
 }
 
 // The <img src> for a player's uploaded photo -- never the raw image data,
 // which this app deliberately keeps out of every bulk player list (see
-// db/schema.ts). Points at a dedicated route that 404s if they haven't set
-// one; pair with an onError fallback (ParticipantSession.tsx's Avatar does
-// this). The ?v= query string changes exactly when the photo does, so the
-// browser can cache each version of it forever instead of re-fetching on
-// every poll.
+// db/schema.ts). Only ever meaningful when player.accountId is set (a guest
+// has no account to hold a picture); callers should check that themselves
+// before using this, rather than relying solely on the 404 this returns
+// otherwise. Points at a dedicated route; pair with an onError fallback
+// (ParticipantSession.tsx's Avatar does this). The ?v= query string changes
+// exactly when the photo does, so the browser can cache each version of it
+// forever instead of re-fetching on every poll.
 export function playerPictureUrl(player: Player): string {
   const base = `/api/players/${player.id}/picture`;
   return player.pictureUpdatedAt ? `${base}?v=${encodeURIComponent(player.pictureUpdatedAt)}` : base;
@@ -162,6 +167,13 @@ export const api = {
   // next time this account requests to join a session (no more per-join prompt).
   updateMyLevel: (level: Level) =>
     request<{ level: Level }>("/me/level", { method: "PATCH", body: JSON.stringify({ level }) }),
+  // Sets or clears (pass null) the account's profile picture -- a full
+  // "data:image/...;base64,..." string. Lives on the account, not a session's
+  // players row, so this shows up for every session this account joins. Only
+  // reachable for a registered account (there's no player id involved), which
+  // is also why only account-linked players ever have a picture.
+  updateMyPicture: (profilePicture: string | null) =>
+    request<{ ok: true }>("/me/picture", { method: "PATCH", body: JSON.stringify({ profilePicture }) }),
   getOverallStats: () =>
     request<{
       sessionsPlayed: number;
@@ -335,12 +347,7 @@ export const api = {
     }),
   updatePlayer: (
     id: number,
-    updates: Partial<Pick<Player, "level" | "status" | "approved" | "name" | "preferredPartnerId" | "playingMode">> & {
-      // A full "data:image/...;base64,..." string to set a new photo, or null
-      // to remove it. Not on the Player type itself -- see playerPictureUrl's
-      // comment above for why the image data never round-trips through here.
-      profilePicture?: string | null;
-    },
+    updates: Partial<Pick<Player, "level" | "status" | "approved" | "name" | "preferredPartnerId" | "playingMode">>,
   ) => request<Player>(`/players/${id}`, { method: "PATCH", body: JSON.stringify(updates) }),
   removePlayer: (id: number) => request<{ ok: true }>(`/players/${id}`, { method: "DELETE" }),
   // Host-only: set a brand-new password for a registered player's account.

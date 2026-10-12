@@ -513,6 +513,20 @@ table.ranking th {
   background: linear-gradient(160deg, #f3cd9e, #d6924f);
 }
 
+/* The small picture-or-level-icon shown next to a name in a Ranking tab's
+   table rows (RankAvatar in src/rankAvatar.tsx) -- same idea as
+   .podium-avatar above but sized for inline text instead of the podium. */
+.rank-row-icon {
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 50%;
+  vertical-align: middle;
+}
+
 .podium-name {
   font-weight: 700;
   font-size: 13px;

@@ -181,6 +181,45 @@ app.patch("/api/me/level", async (c) => {
   return c.json({ level: updated.level });
 });
 
+// PATCH /api/me/picture -- set or remove this account's profile picture.
+// Lives on the account (not a session's players row) so it's set once and
+// then shows everywhere this account plays -- see accounts.profilePicture in
+// db/schema.ts. Only a registered account can have a picture at all; there's
+// nowhere for a guest to even call this from, since it has no player row to
+// act through -- it's reached from "me" (the player token), not a player id.
+app.patch("/api/me/picture", async (c) => {
+  const secret = playerAuthSecret(c.env);
+  const accountId = secret ? await requirePlayer(c.req.raw, secret) : null;
+  if (!accountId) return c.text("Unauthorized", 401);
+  const body = await c.req.json().catch(() => ({}));
+
+  const updates: { profilePicture: string | null; pictureUpdatedAt: Date } = {
+    profilePicture: null,
+    pictureUpdatedAt: new Date(),
+  };
+  if (typeof body.profilePicture === "string") {
+    // Client-side upload already resizes/compresses to a small square JPEG
+    // before this ever gets sent -- this length cap (roughly 450KB of raw
+    // image bytes once base64's ~33% overhead is backed out) is just a
+    // server-side backstop against a buggy or bypassed client, not the
+    // normal path.
+    if (!/^data:image\/(png|jpe?g|webp|gif);base64,/.test(body.profilePicture)) {
+      return c.json({ error: "Profile picture must be an image" }, 400);
+    }
+    if (body.profilePicture.length > 600_000) {
+      return c.json({ error: "That picture is too large" }, 400);
+    }
+    updates.profilePicture = body.profilePicture;
+  } else if (body.profilePicture !== null) {
+    return c.json({ error: "No valid fields" }, 400);
+  }
+
+  const db = getDb(c.env.DATABASE_URL);
+  const [updated] = await db.update(accounts).set(updates).where(eq(accounts.id, accountId)).returning();
+  if (!updated) return c.text("Not found", 404);
+  return c.json({ ok: true });
+});
+
 // GET /api/me/stats -- totals across every session this account has ever joined.
 app.get("/api/me/stats", async (c) => {
   const secret = playerAuthSecret(c.env);
@@ -479,13 +518,15 @@ app.patch("/api/sessions/:id/courts/:courtId", async (c) => {
 });
 
 // GET/POST /api/sessions/:id/players
-// Every players column except profilePicture itself -- this is what the bulk
-// roster list below returns. profilePicture holds a full base64 image, and
-// this route is polled by every connected device every few seconds, so
-// including it here would multiply that payload by every player's photo on
-// every poll tick. pictureUpdatedAt (tiny, just a timestamp) still comes
-// through, which is all a client needs to build the right <img> URL -- see
-// GET /api/players/:id/picture below and playerPictureUrl in src/api.ts.
+// Every players column, plus the owning account's pictureUpdatedAt (joined in
+// by accountId, null for a guest) -- this is what the bulk roster list below
+// returns. The picture itself (accounts.profilePicture) is deliberately left
+// out: it holds a full base64 image, and this route is polled by every
+// connected device every few seconds, so including it here would multiply
+// that payload by every player's photo on every poll tick. pictureUpdatedAt
+// is tiny (just a timestamp) and is all a client needs to build the right
+// <img> URL -- see GET /api/players/:id/picture below and playerPictureUrl
+// in src/api.ts.
 const PLAYER_LIST_COLUMNS = {
   id: players.id,
   sessionId: players.sessionId,
@@ -504,7 +545,7 @@ const PLAYER_LIST_COLUMNS = {
   lastMatchEndedAt: players.lastMatchEndedAt,
   preferredPartnerId: players.preferredPartnerId,
   accountId: players.accountId,
-  pictureUpdatedAt: players.pictureUpdatedAt,
+  pictureUpdatedAt: accounts.pictureUpdatedAt,
   createdAt: players.createdAt,
 };
 
@@ -512,22 +553,33 @@ app.get("/api/sessions/:id/players", async (c) => {
   const sessionId = Number(c.req.param("id"));
   if (!Number.isFinite(sessionId)) return c.text("Invalid session id", 400);
   const db = getDb(c.env.DATABASE_URL);
-  const list = await db.select(PLAYER_LIST_COLUMNS).from(players).where(eq(players.sessionId, sessionId));
+  const list = await db
+    .select(PLAYER_LIST_COLUMNS)
+    .from(players)
+    .leftJoin(accounts, eq(players.accountId, accounts.id))
+    .where(eq(players.sessionId, sessionId));
   return c.json(list);
 });
 
-// GET /api/players/:id/picture -- serves a player's uploaded photo as a real
-// image response (not JSON), decoded from the data: URL stored in
-// profilePicture. Public/unauthenticated like the rest of this app's reads
-// (see AGENTS.md's "no per-player identity check" simplification). ?v=... in
-// the URL (see playerPictureUrl in src/api.ts) changes every time the photo
-// does, so this can be cached essentially forever under that exact URL.
+// GET /api/players/:id/picture -- serves a player's photo as a real image
+// response (not JSON), decoded from the data: URL stored on their account
+// (accounts.profilePicture -- only a registered account can have one; a
+// guest player row has no accountId and this just 404s). Public/
+// unauthenticated like the rest of this app's reads (see AGENTS.md's "no
+// per-player identity check" simplification). ?v=... in the URL (see
+// playerPictureUrl in src/api.ts) changes every time the photo does, so this
+// can be cached essentially forever under that exact URL.
 app.get("/api/players/:id/picture", async (c) => {
   const id = Number(c.req.param("id"));
   if (!Number.isFinite(id)) return c.text("Invalid player id", 400);
   const db = getDb(c.env.DATABASE_URL);
-  const [row] = await db.select({ profilePicture: players.profilePicture }).from(players).where(eq(players.id, id));
-  const dataUrl = row?.profilePicture;
+  const [player] = await db.select({ accountId: players.accountId }).from(players).where(eq(players.id, id));
+  if (!player?.accountId) return c.text("Not found", 404);
+  const [account] = await db
+    .select({ profilePicture: accounts.profilePicture })
+    .from(accounts)
+    .where(eq(accounts.id, player.accountId));
+  const dataUrl = account?.profilePicture;
   if (!dataUrl) return c.text("Not found", 404);
   const match = /^data:([^;,]+);base64,([\s\S]*)$/.exec(dataUrl);
   if (!match) return c.text("Not found", 404);
@@ -817,24 +869,6 @@ app.patch("/api/players/:id", async (c) => {
       return c.json({ error: "Unknown player" }, 400);
     }
     updates.preferredPartnerId = partnerId;
-  }
-  if (body.profilePicture === null) {
-    updates.profilePicture = null;
-    updates.pictureUpdatedAt = new Date();
-  } else if (typeof body.profilePicture === "string") {
-    // Client-side upload already resizes/compresses to a small square JPEG
-    // before this ever gets sent -- this length cap (roughly 450KB of raw
-    // image bytes once base64's ~33% overhead is backed out) is just a
-    // server-side backstop against a buggy or bypassed client, not the
-    // normal path.
-    if (!/^data:image\/(png|jpe?g|webp|gif);base64,/.test(body.profilePicture)) {
-      return c.json({ error: "Profile picture must be an image" }, 400);
-    }
-    if (body.profilePicture.length > 600_000) {
-      return c.json({ error: "That picture is too large" }, 400);
-    }
-    updates.profilePicture = body.profilePicture;
-    updates.pictureUpdatedAt = new Date();
   }
 
   // Host-only: approve join requests, override level/status/name.

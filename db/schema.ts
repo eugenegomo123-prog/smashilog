@@ -37,6 +37,22 @@ export const accounts = pgTable("accounts", {
   // Null until this account's first rated match; used to grow ratingDeviation
   // (lower confidence) the longer an account goes without a rated match.
   lastRatedMatchAt: timestamp("last_rated_match_at"),
+  // Self-service photo (PATCH /api/me/picture), stored as a full data: URL
+  // (e.g. "data:image/jpeg;base64,..."). Lives on the account -- not on a
+  // per-session players row -- so it's set once and then shows in every
+  // session this account joins; only registered accounts can have one, guests
+  // never do. Deliberately NOT selected by GET /sessions/:id/players -- the
+  // bulk roster list every device polls every few seconds -- since that would
+  // multiply this payload by every player's photo on every poll tick. It's
+  // served on its own instead, by GET /api/players/:id/picture (see
+  // worker/index.ts), which is what <img> tags point at.
+  profilePicture: text("profile_picture"),
+  // Bumped (to the current time) every time profilePicture above changes.
+  // Small and cheap enough to include in the bulk roster list (joined in by
+  // accountId), unlike the picture itself -- its only job is to give <img>
+  // tags a cache-busting query param (?v=...) so a new photo doesn't keep
+  // showing the old one from browser cache. See playerPictureUrl in src/api.ts.
+  pictureUpdatedAt: timestamp("picture_updated_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -81,23 +97,10 @@ export const players = pgTable("players", {
   // API layer instead (must be an approved player in the same session).
   preferredPartnerId: integer("preferred_partner_id"),
   // Set when this player row belongs to a registered account rather than a guest.
-  // Guests (today's flow) leave this null, unchanged.
+  // Guests (today's flow) leave this null, unchanged. Also what gates the
+  // profile-picture feature -- see accounts.profilePicture above -- since the
+  // picture itself lives on the account, not here.
   accountId: integer("account_id").references(() => accounts.id),
-  // Self-service photo (PATCH /api/players/:id), stored as a full data: URL
-  // (e.g. "data:image/jpeg;base64,..."). Deliberately NOT selected by GET
-  // /sessions/:id/players -- the bulk roster list every device polls every
-  // few seconds -- since that would multiply this payload by every player's
-  // photo on every poll tick. It's served on its own instead, by GET
-  // /api/players/:id/picture (see worker/index.ts), which is what <img> tags
-  // point at.
-  profilePicture: text("profile_picture"),
-  // Bumped (to the current time) every time profilePicture above changes.
-  // Small and cheap enough to include in the bulk roster list, unlike the
-  // picture itself -- its only job is to give <img> tags a cache-busting
-  // query param (?v=...) so a new photo doesn't keep showing the old one
-  // from browser cache under the same player id. See playerPictureUrl in
-  // src/api.ts.
-  pictureUpdatedAt: timestamp("picture_updated_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

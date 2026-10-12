@@ -16,6 +16,7 @@ import {
 } from "../api";
 import { playerKey } from "./ParticipantJoin";
 import { shareResultsImage } from "../shareImage";
+import { RankAvatar } from "../rankAvatar";
 
 type Tab = "dashboard" | "ongoing" | "queue" | "ranking" | "history";
 
@@ -264,7 +265,10 @@ function Avatar({ player, size = 48 }: { player: Player | undefined; size?: numb
       .map((word) => word[0]?.toUpperCase() ?? "")
       .join("") || "?";
   const style = { width: size, height: size, fontSize: Math.round(size * 0.36) };
-  if (!player || failed) {
+  // Only a registered account can have a picture (see db/schema.ts's
+  // accounts.profilePicture) -- a guest player's accountId is always null, so
+  // there's no point even trying to load one for them.
+  if (!player || !player.accountId || failed) {
     return (
       <div className="avatar" style={style}>
         {initials}
@@ -485,7 +489,7 @@ function DashboardTab({
     setUploading(true);
     try {
       const dataUrl = await compressImageFile(file);
-      await api.updatePlayer(player.id, { profilePicture: dataUrl });
+      await api.updateMyPicture(dataUrl);
       onChanged();
     } catch (err) {
       setPictureError(err instanceof Error ? err.message : "Could not upload that picture");
@@ -497,7 +501,7 @@ function DashboardTab({
   async function removePicture() {
     setUploading(true);
     try {
-      await api.updatePlayer(player.id, { profilePicture: null });
+      await api.updateMyPicture(null);
       onChanged();
     } finally {
       setUploading(false);
@@ -520,28 +524,34 @@ function DashboardTab({
           <Matchup team1={status.match.team1} team2={status.match.team2} playerById={playerById} size={56} />
         </div>
       )}
-      <div className="card row" style={{ alignItems: "center" }}>
-        <Avatar player={player} size={64} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <label style={{ marginBottom: 6 }}>Profile picture</label>
-          <div className="row" style={{ gap: 8 }}>
-            <label className="btn small" style={{ cursor: "pointer" }}>
-              {uploading ? "Uploading…" : "Change photo"}
-              <input
-                type="file"
-                accept="image/*"
-                style={{ display: "none" }}
-                onChange={handlePictureChange}
-                disabled={uploading}
-              />
-            </label>
-            <button type="button" className="btn small" onClick={removePicture} disabled={uploading}>
-              Remove
-            </button>
+      {player.accountId ? (
+        <div className="card row" style={{ alignItems: "center" }}>
+          <Avatar player={player} size={64} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <label style={{ marginBottom: 6 }}>Profile picture</label>
+            <div className="row" style={{ gap: 8 }}>
+              <label className="btn small" style={{ cursor: "pointer" }}>
+                {uploading ? "Uploading…" : "Change photo"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  style={{ display: "none" }}
+                  onChange={handlePictureChange}
+                  disabled={uploading}
+                />
+              </label>
+              <button type="button" className="btn small" onClick={removePicture} disabled={uploading}>
+                Remove
+              </button>
+            </div>
+            {pictureError && <div className="error-text" style={{ marginTop: 6 }}>{pictureError}</div>}
           </div>
-          {pictureError && <div className="error-text" style={{ marginTop: 6 }}>{pictureError}</div>}
         </div>
-      </div>
+      ) : (
+        <div className="card" style={{ fontSize: 13, color: "var(--muted)" }}>
+          Profile pictures are for registered accounts — log in with an account to set one.
+        </div>
+      )}
       <div className="card">
         <label>My level</label>
         <select
@@ -722,7 +732,7 @@ function RankingTab({ session, players, history }: { session: Session; players: 
                     <td>{i + 4}</td>
                     <td>
                       {p.name} {fireBadge(p.currentStreak)}{" "}
-                      <span style={{ color: "var(--muted)" }}>{LEVEL_ICON[p.level]}</span>
+                      <span className="rank-row-icon" style={{ color: "var(--muted)" }}><RankAvatar player={p} /></span>
                     </td>
                     <td>{p.wins}-{p.losses}</td>
                     <td>{p.gamesPlayed ? Math.round((p.wins / p.gamesPlayed) * 100) : 0}%</td>
@@ -784,7 +794,7 @@ function PodiumPlace({ place, player }: { place: 1 | 2 | 3; player?: Player }) {
   return (
     <div className={`podium-place ${rankClass}`}>
       {place === 1 && <div className="podium-crown">👑</div>}
-      <div className="podium-avatar">{LEVEL_ICON[player.level]}</div>
+      <div className="podium-avatar"><RankAvatar player={player} /></div>
       <div className="podium-name">
         {player.name} {fireBadge(player.currentStreak)}
       </div>

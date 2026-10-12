@@ -14,6 +14,7 @@ import {
   type Court,
 } from "../api";
 import { shareResultsImage } from "../shareImage";
+import { RankAvatar } from "../rankAvatar";
 // Pure, dependency-free scoring module shared with the Worker's matchmaking
 // generator (worker/lib/regenerate.ts) -- imported directly rather than
 // duplicated so the grade shown here always matches the logic that actually
@@ -1025,7 +1026,7 @@ function RankingTab({ session, players, history }: { session: Session; players: 
                     <td>{i + 4}</td>
                     <td>
                       {p.name} {fireBadge(p.currentStreak)}{" "}
-                      <span style={{ color: "var(--muted)" }}>{LEVEL_ICON[p.level]}</span>
+                      <span className="rank-row-icon" style={{ color: "var(--muted)" }}><RankAvatar player={p} /></span>
                     </td>
                     <td>{p.wins}-{p.losses}</td>
                     <td>{p.gamesPlayed ? Math.round((p.wins / p.gamesPlayed) * 100) : 0}%</td>
@@ -1087,7 +1088,7 @@ function PodiumPlace({ place, player }: { place: 1 | 2 | 3; player?: Player }) {
   return (
     <div className={`podium-place ${rankClass}`}>
       {place === 1 && <div className="podium-crown">👑</div>}
-      <div className="podium-avatar">{LEVEL_ICON[player.level]}</div>
+      <div className="podium-avatar"><RankAvatar player={player} /></div>
       <div className="podium-name">
         {player.name} {fireBadge(player.currentStreak)}
       </div>
