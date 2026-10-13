@@ -312,8 +312,14 @@ function PlayersTab({
   const [name, setName] = useState("");
   const [level, setLevel] = useState<Level>("C");
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<Player["status"] | null>(null);
+  const [modeFilter, setModeFilter] = useState<PlayingMode | null>(null);
+  const filtersActive = statusFilter !== null || modeFilter !== null;
   const approved = [...players.filter((p) => p.approved)].sort((a, b) => a.name.localeCompare(b.name));
-  const filteredApproved = approved.filter((p) => p.name.toLowerCase().includes(search.trim().toLowerCase()));
+  const filteredApproved = approved
+    .filter((p) => p.name.toLowerCase().includes(search.trim().toLowerCase()))
+    .filter((p) => statusFilter === null || p.status === statusFilter)
+    .filter((p) => modeFilter === null || p.playingMode === modeFilter);
 
   async function addPlayer(e: React.FormEvent) {
     e.preventDefault();
@@ -385,6 +391,42 @@ function PlayersTab({
         onChange={(e) => setSearch(e.target.value)}
         style={{ marginBottom: 12 }}
       />
+      <div className="row" style={{ marginBottom: 6, flexWrap: "wrap", gap: 6 }}>
+        <button className={`btn small ${statusFilter === null ? "primary" : ""}`} onClick={() => setStatusFilter(null)}>
+          All statuses
+        </button>
+        <button className={`btn small ${statusFilter === "active" ? "primary" : ""}`} onClick={() => setStatusFilter("active")}>
+          Active
+        </button>
+        <button className={`btn small ${statusFilter === "resting" ? "primary" : ""}`} onClick={() => setStatusFilter("resting")}>
+          Resting
+        </button>
+        <button className={`btn small ${statusFilter === "inactive" ? "primary" : ""}`} onClick={() => setStatusFilter("inactive")}>
+          Inactive
+        </button>
+      </div>
+      <div className="row" style={{ marginBottom: 12, flexWrap: "wrap", gap: 6 }}>
+        <button className={`btn small ${modeFilter === null ? "primary" : ""}`} onClick={() => setModeFilter(null)}>
+          All modes
+        </button>
+        <button className={`btn small ${modeFilter === "competitive" ? "primary" : ""}`} onClick={() => setModeFilter("competitive")}>
+          🏆 Competitive
+        </button>
+        <button className={`btn small ${modeFilter === "chill" ? "primary" : ""}`} onClick={() => setModeFilter("chill")}>
+          😎 Chill
+        </button>
+        {filtersActive && (
+          <button
+            className="btn small"
+            onClick={() => {
+              setStatusFilter(null);
+              setModeFilter(null);
+            }}
+          >
+            ✕ Reset filter
+          </button>
+        )}
+      </div>
       <div className="stack">
         {filteredApproved.map((p) => (
           <div key={p.id} className="card">
@@ -477,7 +519,10 @@ function PlayersTab({
         ))}
         {approved.length === 0 && <div className="empty-state">No players yet.</div>}
         {approved.length > 0 && filteredApproved.length === 0 && (
-          <div className="empty-state">No players match "{search}".</div>
+          <div className="empty-state">
+            No players match{search.trim() ? ` "${search}"` : ""}
+            {filtersActive ? " with these filters" : ""}.
+          </div>
         )}
       </div>
     </div>
