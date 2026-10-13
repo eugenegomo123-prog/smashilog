@@ -127,7 +127,7 @@ export async function computeAllTimeRanking(db: Db): Promise<AccountRankEntry[]>
           tier,
           division,
           provisional,
-          pictureUpdatedAt: a.pictureUpdatedAt,
+          pictureUpdatedAt: a.pictureUpdatedAt ? (a.pictureUpdatedAt as unknown as Date).toISOString() : null,
         },
       ];
     }),
@@ -183,7 +183,7 @@ export async function computeMonthRanking(db: Db, month: string): Promise<Accoun
         tier,
         division,
         provisional,
-        pictureUpdatedAt: account?.pictureUpdatedAt ?? null,
+        pictureUpdatedAt: account?.pictureUpdatedAt ? (account.pictureUpdatedAt as unknown as Date).toISOString() : null,
       };
       byAccount.set(accountId, e);
     }

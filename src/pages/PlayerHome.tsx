@@ -113,6 +113,7 @@ interface AccountRankEntry {
   tier: string;
   division: "I" | "II" | "III" | null;
   provisional: boolean;
+  pictureUpdatedAt: string | null;
 }
 
 // Highest to lowest -- the order the filter buttons are shown in, and how a
