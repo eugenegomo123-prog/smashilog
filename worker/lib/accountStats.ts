@@ -99,6 +99,9 @@ export interface AccountRankEntry {
   tier: string;
   division: "I" | "II" | "III" | null;
   provisional: boolean;
+  // For the Ranking tab's picture-instead-of-nothing treatment -- see
+  // accountPictureUrl in src/api.ts. Null for an account that's never set one.
+  pictureUpdatedAt: string | null;
 }
 
 // All-time: sum each account's already-stored per-session totals -- fast, and
@@ -124,6 +127,7 @@ export async function computeAllTimeRanking(db: Db): Promise<AccountRankEntry[]>
           tier,
           division,
           provisional,
+          pictureUpdatedAt: a.pictureUpdatedAt,
         },
       ];
     }),
@@ -179,6 +183,7 @@ export async function computeMonthRanking(db: Db, month: string): Promise<Accoun
         tier,
         division,
         provisional,
+        pictureUpdatedAt: account?.pictureUpdatedAt ?? null,
       };
       byAccount.set(accountId, e);
     }

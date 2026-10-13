@@ -428,34 +428,6 @@ function StatusCardBody({ status }: { status: MyStatus }) {
   }
 }
 
-// Reads a selected photo, center-crops it to a square, and shrinks it to
-// size×size -- keeps the uploaded data: URL small (a few tens of KB) without
-// asking a non-technical host or player to resize anything themselves.
-async function compressImageFile(file: File, size = 320): Promise<string> {
-  const dataUrl = await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(new Error("Could not read that file"));
-    reader.readAsDataURL(file);
-  });
-  const img = new Image();
-  await new Promise<void>((resolve, reject) => {
-    img.onload = () => resolve();
-    img.onerror = () => reject(new Error("That doesn't look like an image"));
-    img.src = dataUrl;
-  });
-  const side = Math.min(img.width, img.height);
-  const sx = (img.width - side) / 2;
-  const sy = (img.height - side) / 2;
-  const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("Could not process that image");
-  ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
-  return canvas.toDataURL("image/jpeg", 0.82);
-}
-
 function DashboardTab({
   player,
   players,
@@ -478,36 +450,6 @@ function DashboardTab({
     .filter((p) => p.approved && p.id !== player.id)
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  const [uploading, setUploading] = useState(false);
-  const [pictureError, setPictureError] = useState("");
-
-  async function handlePictureChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    setPictureError("");
-    setUploading(true);
-    try {
-      const dataUrl = await compressImageFile(file);
-      await api.updateMyPicture(dataUrl);
-      onChanged();
-    } catch (err) {
-      setPictureError(err instanceof Error ? err.message : "Could not upload that picture");
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  async function removePicture() {
-    setUploading(true);
-    try {
-      await api.updateMyPicture(null);
-      onChanged();
-    } finally {
-      setUploading(false);
-    }
-  }
-
   return (
     <div className="stack">
       <div className="card">
@@ -522,34 +464,6 @@ function DashboardTab({
         <div className="card">
           <label>Your match</label>
           <Matchup team1={status.match.team1} team2={status.match.team2} playerById={playerById} size={56} />
-        </div>
-      )}
-      {player.accountId ? (
-        <div className="card row" style={{ alignItems: "center" }}>
-          <Avatar player={player} size={64} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <label style={{ marginBottom: 6 }}>Profile picture</label>
-            <div className="row" style={{ gap: 8 }}>
-              <label className="btn small" style={{ cursor: "pointer" }}>
-                {uploading ? "Uploading…" : "Change photo"}
-                <input
-                  type="file"
-                  accept="image/*"
-                  style={{ display: "none" }}
-                  onChange={handlePictureChange}
-                  disabled={uploading}
-                />
-              </label>
-              <button type="button" className="btn small" onClick={removePicture} disabled={uploading}>
-                Remove
-              </button>
-            </div>
-            {pictureError && <div className="error-text" style={{ marginTop: 6 }}>{pictureError}</div>}
-          </div>
-        </div>
-      ) : (
-        <div className="card" style={{ fontSize: 13, color: "var(--muted)" }}>
-          Profile pictures are for registered accounts — log in with an account to set one.
         </div>
       )}
       <div className="card">
@@ -662,12 +576,7 @@ function QueueTab({
         return (
           <div key={m.id} className="match-card" style={mine ? { borderColor: "var(--accent)" } : undefined}>
             <div className="court-label">Up #{i + 1}</div>
-            <div className="team-row">
-              <span>{m.team1.map((id) => playerById(id)?.name ?? "?").join(" & ")}</span>
-            </div>
-            <div className="team-row">
-              <span>{m.team2.map((id) => playerById(id)?.name ?? "?").join(" & ")}</span>
-            </div>
+            <Matchup team1={m.team1} team2={m.team2} playerById={playerById} size={40} />
           </div>
         );
       })}

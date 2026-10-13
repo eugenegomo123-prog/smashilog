@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, TIER_BADGE_IMAGE } from "../api";
+import { AccountAvatar } from "../accountAvatar";
 
 // Same shape as api.ts's getAccountProfile() response -- kept here rather
 // than exported from api.ts since nothing else needs it yet.
 interface AccountProfile {
   username: string;
+  pictureUpdatedAt: string | null;
   stats: {
     sessionsPlayed: number;
     gamesPlayed: number;
@@ -66,7 +68,13 @@ export default function PlayerProfile() {
 
       {profile && (
         <>
-          <div className="brand">
+          <div className="brand" style={{ gap: 12 }}>
+            <AccountAvatar
+              username={profile.username}
+              accountId={accountId}
+              pictureUpdatedAt={profile.pictureUpdatedAt}
+              size={56}
+            />
             <h1>{profile.username}</h1>
           </div>
 

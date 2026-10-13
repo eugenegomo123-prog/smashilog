@@ -156,7 +156,17 @@ app.get("/api/me", async (c) => {
     }
   }
 
-  return c.json({ username: account.username, level: account.level, activeParticipation });
+  return c.json({
+    username: account.username,
+    level: account.level,
+    activeParticipation,
+    // Lets the client build its own picture URL (see accountPictureUrl in
+    // src/api.ts) for the Account tab's own preview, without a separate
+    // round trip -- this is the one place the client needs to know its own
+    // account id at all.
+    accountId: account.id,
+    pictureUpdatedAt: account.pictureUpdatedAt,
+  });
 });
 
 // PATCH /api/me/level -- update this account's self-reported level, used to
@@ -336,7 +346,15 @@ app.get("/api/accounts/:id/profile", async (c) => {
   const [account] = await db.select().from(accounts).where(eq(accounts.id, accountId));
   if (!account) return c.text("Not found", 404);
   const stats = await computeOverallStats(db, accountId);
-  return c.json({ username: account.username, stats, rating: publicRatingView(account) });
+  return c.json({
+    username: account.username,
+    // So the viewer can show this account's picture (see accountPictureUrl
+    // in src/api.ts) -- the image itself never comes through here, same
+    // reasoning as everywhere else in this app.
+    pictureUpdatedAt: account.pictureUpdatedAt,
+    stats,
+    rating: publicRatingView(account),
+  });
 });
 
 // POST /api/me/change-password
@@ -561,6 +579,27 @@ app.get("/api/sessions/:id/players", async (c) => {
   return c.json(list);
 });
 
+// Shared by both picture routes below -- decodes a stored "data:mime;base64,..."
+// URL into a real image Response, 404ing on anything missing or malformed.
+// hasVersionParam controls caching: a request with ?v=... (see
+// playerPictureUrl/accountPictureUrl in src/api.ts) names an exact version of
+// the photo, so it's safe to cache "forever"; a bare request (no ?v=, e.g. a
+// fresh account tab preview right after upload) gets a short TTL instead so a
+// changed photo shows up again soon without needing a new URL.
+function servePictureResponse(dataUrl: string | null | undefined, hasVersionParam: boolean): Response {
+  if (!dataUrl) return new Response("Not found", { status: 404 });
+  const match = /^data:([^;,]+);base64,([\s\S]*)$/.exec(dataUrl);
+  if (!match) return new Response("Not found", { status: 404 });
+  const [, mimeType, base64Data] = match;
+  const bytes = Uint8Array.from(atob(base64Data), (ch) => ch.charCodeAt(0));
+  return new Response(bytes, {
+    headers: {
+      "Content-Type": mimeType,
+      "Cache-Control": hasVersionParam ? "public, max-age=31536000, immutable" : "public, max-age=60",
+    },
+  });
+}
+
 // GET /api/players/:id/picture -- serves a player's photo as a real image
 // response (not JSON), decoded from the data: URL stored on their account
 // (accounts.profilePicture -- only a registered account can have one; a
@@ -579,18 +618,20 @@ app.get("/api/players/:id/picture", async (c) => {
     .select({ profilePicture: accounts.profilePicture })
     .from(accounts)
     .where(eq(accounts.id, player.accountId));
-  const dataUrl = account?.profilePicture;
-  if (!dataUrl) return c.text("Not found", 404);
-  const match = /^data:([^;,]+);base64,([\s\S]*)$/.exec(dataUrl);
-  if (!match) return c.text("Not found", 404);
-  const [, mimeType, base64Data] = match;
-  const bytes = Uint8Array.from(atob(base64Data), (ch) => ch.charCodeAt(0));
-  return new Response(bytes, {
-    headers: {
-      "Content-Type": mimeType,
-      "Cache-Control": c.req.query("v") ? "public, max-age=31536000, immutable" : "public, max-age=60",
-    },
-  });
+  return servePictureResponse(account?.profilePicture, !!c.req.query("v"));
+});
+
+// GET /api/accounts/:id/picture -- same idea as GET /api/players/:id/picture
+// above, but keyed directly by account id for contexts with no session
+// player row in play: the Account tab's own preview, another member's public
+// profile (GET /api/accounts/:id/profile), and the cross-session Ranking
+// tab. Public/unauthenticated, same as the player-keyed route.
+app.get("/api/accounts/:id/picture", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isFinite(id)) return c.text("Invalid account id", 400);
+  const db = getDb(c.env.DATABASE_URL);
+  const [account] = await db.select({ profilePicture: accounts.profilePicture }).from(accounts).where(eq(accounts.id, id));
+  return servePictureResponse(account?.profilePicture, !!c.req.query("v"));
 });
 
 app.post("/api/sessions/:id/players", async (c) => {

@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api, TIER_BADGE_IMAGE, rankScore, LEVELS, LEVEL_ICON, LEVEL_LABEL, type Level } from "../api";
+import { compressImageFile } from "../imageUpload";
+import { AccountAvatar } from "../accountAvatar";
 
 type Tab = "stats" | "rank" | "ranking" | "history" | "account";
 const TABS: Tab[] = ["stats", "rank", "ranking", "history", "account"];
@@ -9,6 +11,8 @@ interface MeInfo {
   username: string;
   level: Level;
   activeParticipation: { sessionId: number; sessionName: string; approved: boolean } | null;
+  accountId: number;
+  pictureUpdatedAt: string | null;
 }
 
 interface OverallStats {
@@ -236,6 +240,9 @@ function RankingTab() {
                   <tr key={e.accountId} style={isMe ? { background: "var(--panel-2)", fontWeight: 700 } : undefined}>
                     <td>{i + 1}</td>
                     <td>
+                      <span className="rank-row-icon" style={{ marginRight: 5 }}>
+                        <AccountAvatar username={e.username} accountId={e.accountId} pictureUpdatedAt={e.pictureUpdatedAt} size={18} />
+                      </span>
                       <Link to={`/player/${e.accountId}`} style={{ color: "inherit", textDecoration: "underline" }}>
                         {e.username}
                       </Link>
@@ -699,9 +706,47 @@ function AccountTab() {
   const [levelError, setLevelError] = useState("");
   const [levelSuccess, setLevelSuccess] = useState("");
 
+  const [me, setMe] = useState<MeInfo | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [pictureError, setPictureError] = useState("");
+
+  function reloadMe() {
+    return api.getMe().then((m) => {
+      setMe(m);
+      setLevel(m.level);
+    });
+  }
+
   useEffect(() => {
-    api.getMe().then((me) => setLevel(me.level));
+    reloadMe();
   }, []);
+
+  async function handlePictureChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setPictureError("");
+    setUploading(true);
+    try {
+      const dataUrl = await compressImageFile(file);
+      await api.updateMyPicture(dataUrl);
+      await reloadMe();
+    } catch (err) {
+      setPictureError(err instanceof Error ? err.message : "Could not upload that picture");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function removePicture() {
+    setUploading(true);
+    try {
+      await api.updateMyPicture(null);
+      await reloadMe();
+    } finally {
+      setUploading(false);
+    }
+  }
 
   async function saveLevel(next: Level) {
     const previous = level;
@@ -773,6 +818,37 @@ function AccountTab() {
       <div className="card">
         <div style={{ fontSize: 13, color: "var(--muted)" }}>Username</div>
         <div style={{ fontWeight: 700, fontSize: 18 }}>{api.playerUsername()}</div>
+      </div>
+
+      <div className="card row" style={{ alignItems: "center" }}>
+        <AccountAvatar
+          username={me?.username ?? api.playerUsername() ?? "?"}
+          accountId={me?.accountId ?? 0}
+          pictureUpdatedAt={me?.pictureUpdatedAt ?? null}
+          size={64}
+        />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <label style={{ marginBottom: 6 }}>Profile picture</label>
+          <div className="subtitle" style={{ marginTop: 2, marginBottom: 8 }}>
+            Shown wherever you play -- your match, courts, queue, ranking, and your profile.
+          </div>
+          <div className="row" style={{ gap: 8 }}>
+            <label className="btn small" style={{ cursor: "pointer" }}>
+              {uploading ? "Uploading…" : "Change photo"}
+              <input
+                type="file"
+                accept="image/*"
+                style={{ display: "none" }}
+                onChange={handlePictureChange}
+                disabled={uploading || !me}
+              />
+            </label>
+            <button type="button" className="btn small" onClick={removePicture} disabled={uploading || !me}>
+              Remove
+            </button>
+          </div>
+          {pictureError && <div className="error-text" style={{ marginTop: 6 }}>{pictureError}</div>}
+        </div>
       </div>
 
       <div className="card">

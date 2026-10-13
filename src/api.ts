@@ -66,6 +66,16 @@ export function playerPictureUrl(player: Player): string {
   return player.pictureUpdatedAt ? `${base}?v=${encodeURIComponent(player.pictureUpdatedAt)}` : base;
 }
 
+// Same idea as playerPictureUrl above, for the contexts that only have an
+// account id and no session player row to go through: the Account tab's own
+// preview, another member's public profile, and the cross-session Ranking
+// tab (PlayerHome.tsx, PlayerProfile.tsx). Points at GET
+// /api/accounts/:id/picture rather than the player-keyed route.
+export function accountPictureUrl(accountId: number, pictureUpdatedAt: string | null): string {
+  const base = `/api/accounts/${accountId}/picture`;
+  return pictureUpdatedAt ? `${base}?v=${encodeURIComponent(pictureUpdatedAt)}` : base;
+}
+
 export interface Match {
   id: number;
   sessionId: number;
@@ -162,6 +172,11 @@ export const api = {
       username: string;
       level: Level;
       activeParticipation: { sessionId: number; sessionName: string; approved: boolean } | null;
+      // This account's own id and picture cache-bust key -- see
+      // accountPictureUrl above. The only place the client learns its own
+      // account id at all.
+      accountId: number;
+      pictureUpdatedAt: string | null;
     }>("/me"),
   // Sets the account's own level -- used to auto-fill "requested level" the
   // next time this account requests to join a session (no more per-join prompt).
@@ -281,6 +296,7 @@ export const api = {
         tier: string;
         division: "I" | "II" | "III" | null;
         provisional: boolean;
+        pictureUpdatedAt: string | null;
       }[];
     }>(`/me/ranking?scope=${encodeURIComponent(scope)}`).then((r) => r.entries),
   getMyPlayerInSession: (sessionId: number) =>
@@ -291,6 +307,7 @@ export const api = {
   getAccountProfile: (accountId: number) =>
     request<{
       username: string;
+      pictureUpdatedAt: string | null;
       stats: {
         sessionsPlayed: number;
         gamesPlayed: number;
