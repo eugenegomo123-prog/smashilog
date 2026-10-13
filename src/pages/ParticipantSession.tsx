@@ -7,7 +7,6 @@ import {
   LEVEL_LABEL,
   liveCourtLabel,
   playerPictureUrl,
-  type Level,
   type Match,
   type Player,
   type Session,
@@ -468,19 +467,17 @@ function DashboardTab({
       )}
       <div className="card">
         <label>My level</label>
-        <select
-          value={player.level}
-          onChange={async (e) => {
-            await api.updatePlayer(player.id, { level: e.target.value as Level });
-            onChanged();
-          }}
-        >
-          {LEVELS.map((l) => (
-            <option key={l} value={l}>
-              {LEVEL_ICON[l]} {l} · {LEVEL_LABEL[l]}
-            </option>
-          ))}
-        </select>
+        {/* Read-only once joined -- set from what was requested at join time
+            (see the Approve button in HostSession.tsx's PlayersTab) and from
+            then on only the host can change it (its roster's own level
+            select), not the player themselves. */}
+        <div className="row" style={{ alignItems: "center", gap: 8, marginTop: 4 }}>
+          <div className="level-pill">{LEVEL_ICON[player.level]}</div>
+          <span>{LEVEL_LABEL[player.level]}</span>
+        </div>
+        <div className="subtitle" style={{ marginTop: 6, marginBottom: 0 }}>
+          Set to what you requested when you joined. Only the host can change it once the session is underway.
+        </div>
       </div>
       <div className="card">
         <label>My status</label>

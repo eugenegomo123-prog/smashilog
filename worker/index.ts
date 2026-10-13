@@ -893,8 +893,8 @@ app.patch("/api/players/:id", async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const updates: Record<string, unknown> = {};
 
-  // Self-service: any participant can change their own level, status, playing mode, or preferred partner.
-  if (LEVELS.includes(body.level)) updates.level = body.level;
+  // Self-service: any participant can change their own status, playing mode, or preferred partner.
+  // Level is deliberately NOT here -- see the host-only block below.
   if (STATUSES.includes(body.status)) updates.status = body.status;
   if (PLAYING_MODES.includes(body.playingMode)) updates.playingMode = body.playingMode;
   if (body.preferredPartnerId === null) {
@@ -912,11 +912,15 @@ app.patch("/api/players/:id", async (c) => {
     updates.preferredPartnerId = partnerId;
   }
 
-  // Host-only: approve join requests, override level/status/name.
+  // Host-only: approve join requests, override level/status/name. A player's level is set from
+  // whatever they requested at join time (see the Approve button in HostSession.tsx's PlayersTab)
+  // and from then on is locked to host control -- a participant can no longer nudge their own
+  // level mid-session from the Dashboard (ParticipantSession.tsx shows it read-only).
   if (isHost) {
     if (typeof body.approved === "boolean") updates.approved = body.approved;
     if (typeof body.name === "string" && body.name.trim()) updates.name = body.name.trim();
-  } else if (typeof body.approved === "boolean") {
+    if (LEVELS.includes(body.level)) updates.level = body.level;
+  } else if (typeof body.approved === "boolean" || LEVELS.includes(body.level)) {
     return c.text("Unauthorized", 401);
   }
 
