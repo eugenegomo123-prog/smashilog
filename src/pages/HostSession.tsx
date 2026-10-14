@@ -79,6 +79,45 @@ function fireBadge(streak: number) {
   return <span title={`${streak}-win streak`}>🔥</span>;
 }
 
+// Top 3 in the session's current competitive ranking -- same players, same
+// cutoff, and the same ordering as RankingTab's own podium below (see
+// rankCompare and RankingTab), just reduced to a Set of ids for quick lookup
+// against a match's 4 players.
+function computeTopRankedIds(players: Player[]): Set<number> {
+  const ranked = players.filter((p) => p.approved && p.playingMode !== "chill").sort(rankCompare);
+  return new Set(ranked.slice(0, 3).map((p) => p.id));
+}
+
+// A match is "on fire" when 2 or more of its 4 players currently have a win
+// streak (same 3-game threshold as fireBadge above), and a "top match" when 2
+// or more are currently in the session's top-3 ranking (computeTopRankedIds
+// above). Both are purely visual, computed fresh from already-loaded data.
+function matchFlags(
+  team1: number[],
+  team2: number[],
+  playerById: (id: number) => Player | undefined,
+  topRankedIds: Set<number>,
+): { fireMatch: boolean; topMatch: boolean } {
+  const ids = [...team1, ...team2];
+  const onFire = ids.filter((id) => (playerById(id)?.currentStreak ?? 0) >= 3).length;
+  const topRanked = ids.filter((id) => topRankedIds.has(id)).length;
+  return { fireMatch: onFire >= 2, topMatch: topRanked >= 2 };
+}
+
+function matchCardClass(flags: { fireMatch: boolean; topMatch: boolean }): string {
+  return ["match-card", flags.fireMatch && "fire-match", flags.topMatch && "top-match"].filter(Boolean).join(" ");
+}
+
+function MatchBadges({ flags }: { flags: { fireMatch: boolean; topMatch: boolean } }) {
+  if (!flags.fireMatch && !flags.topMatch) return null;
+  return (
+    <div className="match-badges">
+      {flags.fireMatch && <span className="match-badge fire">🔥 On fire</span>}
+      {flags.topMatch && <span className="match-badge top">🏅 Top match</span>}
+    </div>
+  );
+}
+
 function buildAwards(players: Player[], history: Match[]) {
   const withGames = players.filter((p) => p.gamesPlayed > 0);
   if (withGames.length === 0) return null;
@@ -223,6 +262,7 @@ export default function HostSession() {
   }
 
   const playerById = (pid: number) => players.find((p) => p.id === pid);
+  const topRankedIds = computeTopRankedIds(players);
 
   if (!session) return <div className="screen empty-state">{error || "Loading…"}</div>;
 
@@ -251,7 +291,13 @@ export default function HostSession() {
         />
       )}
       {tab === "courts" && (
-        <CourtsTab session={session} ongoing={matchData.ongoing} playerById={playerById} onChanged={load} />
+        <CourtsTab
+          session={session}
+          ongoing={matchData.ongoing}
+          playerById={playerById}
+          topRankedIds={topRankedIds}
+          onChanged={load}
+        />
       )}
       {tab === "queue" && (
         <QueueTab
@@ -262,6 +308,7 @@ export default function HostSession() {
           history={matchData.history}
           players={players}
           playerById={playerById}
+          topRankedIds={topRankedIds}
           sessionId={sessionId}
           onChanged={load}
         />
@@ -533,11 +580,13 @@ function CourtsTab({
   session,
   ongoing,
   playerById,
+  topRankedIds,
   onChanged,
 }: {
   session: Session;
   ongoing: Match[];
   playerById: (id: number) => Player | undefined;
+  topRankedIds: Set<number>;
   onChanged: () => void;
 }) {
   // A court is occupied when some ongoing match is linked to it by stable id;
@@ -558,7 +607,14 @@ function CourtsTab({
       </div>
       <div className="stack">
         {ongoing.map((m) => (
-          <ScoreCard key={m.id} match={m} courtLabels={session.courtLabels} playerById={playerById} onChanged={onChanged} />
+          <ScoreCard
+            key={m.id}
+            match={m}
+            courtLabels={session.courtLabels}
+            playerById={playerById}
+            topRankedIds={topRankedIds}
+            onChanged={onChanged}
+          />
         ))}
         {emptyCourts.map((court) => (
           <div key={court.id} className="match-card empty-state">
@@ -574,11 +630,13 @@ function ScoreCard({
   match,
   courtLabels,
   playerById,
+  topRankedIds,
   onChanged,
 }: {
   match: Match;
   courtLabels: Court[];
   playerById: (id: number) => Player | undefined;
+  topRankedIds: Set<number>;
   onChanged: () => void;
 }) {
   const [score1, setScore1] = useState("");
@@ -611,11 +669,14 @@ function ScoreCard({
     }
   }
 
+  const flags = matchFlags(match.team1, match.team2, playerById, topRankedIds);
+
   return (
-    <div className="match-card">
+    <div className={matchCardClass(flags)}>
       <div className="court-label">
         {liveCourtLabel(courtLabels, match)} · started {timeAgo(match.startedAt)}
       </div>
+      <MatchBadges flags={flags} />
       <div className="team-row">
         <span>{match.team1.map((id) => playerById(id)?.name ?? "?").join(" & ")}</span>
         <input className="score-input" placeholder="0" value={score1} onChange={(e) => setScore1(e.target.value)} inputMode="numeric" />
@@ -676,6 +737,7 @@ function QueueTab({
   history,
   players,
   playerById,
+  topRankedIds,
   sessionId,
   onChanged,
 }: {
@@ -686,6 +748,7 @@ function QueueTab({
   history: Match[];
   players: Player[];
   playerById: (id: number) => Player | undefined;
+  topRankedIds: Set<number>;
   sessionId: number;
   onChanged: () => void;
 }) {
@@ -750,6 +813,7 @@ function QueueTab({
             restingLong={restingLong}
             queueFull={queueFull}
             playerById={playerById}
+            topRankedIds={topRankedIds}
             sessionId={sessionId}
             onChanged={onChanged}
           />
@@ -777,7 +841,13 @@ function QueueTab({
       <p className="subtitle" style={{ marginBottom: 12 }}>
         First in line takes the next court that opens up. Participants see this list — reorder or remove below.
       </p>
-      <ActualQueueSection queued={queued} playerById={playerById} sessionId={sessionId} onChanged={onChanged} />
+      <ActualQueueSection
+        queued={queued}
+        playerById={playerById}
+        topRankedIds={topRankedIds}
+        sessionId={sessionId}
+        onChanged={onChanged}
+      />
     </div>
   );
 }
@@ -789,6 +859,7 @@ function SuggestionCard({
   restingLong,
   queueFull,
   playerById,
+  topRankedIds,
   sessionId,
   onChanged,
 }: {
@@ -798,6 +869,7 @@ function SuggestionCard({
   restingLong: Set<number>;
   queueFull: boolean;
   playerById: (id: number) => Player | undefined;
+  topRankedIds: Set<number>;
   sessionId: number;
   onChanged: () => void;
 }) {
@@ -806,6 +878,7 @@ function SuggestionCard({
   const stale = isStale(match, pool);
   const reason = stale ? null : suggestionReason(match, pool);
   const quality = qualityForMatch(match, playerById);
+  const flags = matchFlags(match.team1, match.team2, playerById, topRankedIds);
 
   async function addToQueue() {
     setSending(true);
@@ -821,8 +894,9 @@ function SuggestionCard({
   }
 
   return (
-    <div className="match-card">
+    <div className={matchCardClass(flags)}>
       <QualityBadge quality={quality} />
+      <MatchBadges flags={flags} />
       <TeamLine ids={match.team1} playerById={playerById} justPlayed={justPlayed} restingLong={restingLong} />
       <TeamLine ids={match.team2} playerById={playerById} justPlayed={justPlayed} restingLong={restingLong} />
       <div style={{ fontSize: 12, color: stale ? "var(--bad)" : "var(--muted)", marginTop: 4 }}>
@@ -948,11 +1022,13 @@ function CustomMatchBuilder({
 function ActualQueueSection({
   queued,
   playerById,
+  topRankedIds,
   sessionId,
   onChanged,
 }: {
   queued: Match[];
   playerById: (id: number) => Player | undefined;
+  topRankedIds: Set<number>;
   sessionId: number;
   onChanged: () => void;
 }) {
@@ -985,10 +1061,13 @@ function ActualQueueSection({
 
   return (
     <div className="stack">
-      {queued.map((m, i) => (
-        <div key={m.id} className="match-card">
+      {queued.map((m, i) => {
+        const flags = matchFlags(m.team1, m.team2, playerById, topRankedIds);
+        return (
+        <div key={m.id} className={matchCardClass(flags)}>
           <div className="court-label">Up #{i + 1}</div>
           <QualityBadge quality={qualityForMatch(m, playerById)} />
+          <MatchBadges flags={flags} />
           <TeamLine ids={m.team1} playerById={playerById} />
           <TeamLine ids={m.team2} playerById={playerById} />
           <div className="row" style={{ marginTop: 10 }}>
@@ -1007,7 +1086,8 @@ function ActualQueueSection({
             </button>
           </div>
         </div>
-      ))}
+        );
+      })}
       {queued.length === 0 && (
         <div className="empty-state">Queue is empty — add a suggested or custom match above.</div>
       )}
