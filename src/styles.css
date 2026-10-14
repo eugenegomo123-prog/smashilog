@@ -443,26 +443,43 @@ label {
   font-weight: 700;
 }
 
-.toast {
+/* A status-change alert the player must dismiss with OK -- see
+   ParticipantSession.tsx's describeStatus/statusKey. Covers things the
+   matchmaking system decided on its own (queue position, a court assignment)
+   that the player might not be watching for, so a toast that fades on its
+   own isn't enough -- it stays up until acknowledged. */
+.modal-overlay {
   position: fixed;
-  top: calc(12px + env(safe-area-inset-top));
-  left: 12px;
-  right: 12px;
-  max-width: 536px;
-  margin: 0 auto;
-  background: linear-gradient(160deg, #ffd166, var(--accent));
-  color: #4a3200;
-  padding: 14px 16px;
-  border-radius: 14px;
-  font-weight: 700;
-  z-index: 50;
-  box-shadow: 0 8px 24px rgba(150, 110, 0, 0.25);
-  animation: slidedown 0.2s ease;
+  inset: 0;
+  background: rgba(74, 59, 26, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 100;
+  animation: fadein 0.15s ease;
 }
 
-@keyframes slidedown {
-  from { transform: translateY(-20px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
+.modal-card {
+  background: var(--panel);
+  border-radius: var(--radius);
+  padding: 24px;
+  max-width: 360px;
+  width: 100%;
+  text-align: center;
+  box-shadow: 0 12px 32px rgba(74, 59, 26, 0.3);
+}
+
+.modal-card p {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0 0 18px;
+}
+
+@keyframes fadein {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 table.ranking {

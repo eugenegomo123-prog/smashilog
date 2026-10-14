@@ -160,9 +160,8 @@ export default function ParticipantSession() {
     suggested: [],
     queued: [],
   });
-  const [toast, setToast] = useState<string | null>(null);
-  const wasOnCourt = useRef(false);
-  const lastThreshold = useRef<"none" | "soon" | "next">("none");
+  const [statusPopup, setStatusPopup] = useState<string | null>(null);
+  const lastStatusKey = useRef<string | null>(null);
 
   const [myId, setMyId] = useState<number | null>(
     () => Number(localStorage.getItem(playerKey(sessionId))) || null,
@@ -197,46 +196,27 @@ export default function ParticipantSession() {
     setSession(s);
     setPlayers(p);
     setMatchData(m);
-    checkStatus(m.ongoing, m.queued, s.courtLabels);
+    checkStatusChange(p, m.ongoing, m.queued, s.courtLabels);
   }
 
-  // Now that the actual queue is a real, host-curated order (not just a computer
-  // guess), a predictive "you're up soon" notice is reliable again -- alongside the
-  // confirmatory "you're on court now" one for the moment it actually happens.
-  function checkStatus(ongoing: Match[], queued: Match[], courtLabels: Court[]) {
+  // Pops up a must-acknowledge dialog exactly once per distinct status --
+  // "not in queue" -> "3rd in queue" -> "2nd in queue" -> "on court" each get
+  // their own popup, but polling again with no real change (still 3rd) stays
+  // silent, and so does the very first load (nothing to announce yet, just a
+  // starting point to compare against). Self-chosen states (resting/inactive)
+  // are tracked for comparison but never popped up -- the player just set
+  // that themselves, so there's nothing to tell them.
+  function checkStatusChange(allPlayers: Player[], ongoing: Match[], queued: Match[], courtLabels: Court[]) {
     if (!myId) return;
-    const myMatch = ongoing.find((m) => [...m.team1, ...m.team2].includes(myId));
-    const isOnCourtNow = !!myMatch;
-    if (isOnCourtNow && !wasOnCourt.current) {
-      // Resolves the court's current name by stable id rather than the
-      // match's frozen label snapshot, so a court renamed mid-match still
-      // notifies the player with its real, current name. See src/api.ts's
-      // liveCourtLabel.
-      fireNotification(`You're on ${liveCourtLabel(courtLabels, myMatch!)} — head to the court!`);
-    }
-    wasOnCourt.current = isOnCourtNow;
-
-    if (isOnCourtNow) {
-      lastThreshold.current = "none";
-      return;
-    }
-
-    const index = queued.findIndex((m) => [...m.team1, ...m.team2].includes(myId));
-    let threshold: "none" | "soon" | "next" = "none";
-    if (index === 0) threshold = "next";
-    else if (index >= 1 && index < 3) threshold = "soon";
-
-    if (threshold !== "none" && threshold !== lastThreshold.current) {
-      if (threshold === "next") fireNotification("You're up next — head toward the courts!");
-      else fireNotification("You're up soon — get ready!");
-    }
-    lastThreshold.current = threshold;
-  }
-
-  function fireNotification(message: string) {
-    setToast(message);
+    const player = allPlayers.find((p) => p.id === myId);
+    if (!player) return;
+    const status = myCurrentStatus(player, ongoing, queued, courtLabels);
+    const key = statusKey(status);
+    const changed = lastStatusKey.current !== null && key !== lastStatusKey.current;
+    lastStatusKey.current = key;
+    if (!changed || status.kind === "resting" || status.kind === "inactive") return;
     if (navigator.vibrate) navigator.vibrate([100, 60, 100]);
-    setTimeout(() => setToast(null), 5000);
+    setStatusPopup(describeStatus(status));
   }
 
   const playerById = (pid: number) => players.find((p) => p.id === pid);
@@ -250,7 +230,7 @@ export default function ParticipantSession() {
       <Link className="back-link" to={api.isPlayerLoggedIn() ? "/me" : "/join"}>
         {api.isPlayerLoggedIn() ? "← My account" : "← All sessions"}
       </Link>
-      {toast && <div className="toast">{toast}</div>}
+      {statusPopup && <StatusPopup message={statusPopup} onDismiss={() => setStatusPopup(null)} />}
       <div className="brand row between">
         <h1>{session.name}</h1>
         <span className={`badge ${session.status === "active" ? "active" : "ended"}`}>{session.status}</span>
@@ -406,6 +386,69 @@ function myCurrentStatus(player: Player, ongoing: Match[], queued: Match[], cour
   if (player.status === "resting") return { kind: "resting" };
   if (player.status === "inactive") return { kind: "inactive" };
   return { kind: "unassigned" };
+}
+
+// A stable fingerprint of a MyStatus, so the popup below can tell "still 3rd
+// in the queue" (same key, stay quiet) apart from "now 2nd" or "now on court"
+// (new key, something to announce). Position is folded into the queued key
+// since that's the part of "queued" that actually changes from poll to poll.
+function statusKey(status: MyStatus): string {
+  if (status.kind === "queued") return `queued:${status.position}`;
+  if (status.kind === "onCourt") return `onCourt:${status.courtLabel}`;
+  return status.kind;
+}
+
+function ordinal(n: number): string {
+  const rem100 = n % 100;
+  if (rem100 >= 11 && rem100 <= 13) return `${n}th`;
+  switch (n % 10) {
+    case 1:
+      return `${n}st`;
+    case 2:
+      return `${n}nd`;
+    case 3:
+      return `${n}rd`;
+    default:
+      return `${n}th`;
+  }
+}
+
+// A one-sentence, plain-language readout of a MyStatus change, for the
+// must-acknowledge popup below -- resting/inactive are deliberately not
+// described here since those are changes the player just made themselves (see
+// the popup's own kind check before calling this).
+function describeStatus(status: MyStatus): string {
+  switch (status.kind) {
+    case "pending":
+      return "You're in! Your join request is just waiting on the host's approval before you can be matched.";
+    case "onCourt":
+      return `You're up — head to ${status.courtLabel} now.`;
+    case "queued":
+      if (status.position === 1) return "You're next in the queue — get ready, your court is coming up!";
+      return `You're ${ordinal(status.position)} in the queue, with ${status.position - 1} match${
+        status.position - 1 === 1 ? "" : "es"
+      } ahead of you.`;
+    case "unassigned":
+      return "You're active and available — the host hasn't sent you to a court yet.";
+    default:
+      return "";
+  }
+}
+
+// Blocks until acknowledged -- unlike a toast, a status change (especially a
+// court assignment) shouldn't be something the player can miss by glancing
+// away for a few seconds.
+function StatusPopup({ message, onDismiss }: { message: string; onDismiss: () => void }) {
+  return (
+    <div className="modal-overlay">
+      <div className="modal-card">
+        <p>{message}</p>
+        <button className="btn primary" style={{ width: "100%" }} onClick={onDismiss}>
+          OK
+        </button>
+      </div>
+    </div>
+  );
 }
 
 // Visual language: green = go now, amber = the system's working on it (queued,
