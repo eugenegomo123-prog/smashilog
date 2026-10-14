@@ -7,19 +7,27 @@
 // between the two safe (see matchQuality()'s doc comment below for more).
 //
 // --- How match selection works, in one pass ---
-// 1. `generateSuggestedMatches` sorts the eligible pool by priority (fewest games
+// 1. `generateSuggestedMatches` is the public entry point, and it's tiered: the
+//    top half of the budget comes from `generateBalancedMatches` (the
+//    skill-matched optimizer described below), the bottom half from
+//    `generateFairnessMatches` (plain priority order, no skill-balancing at
+//    all). See generateSuggestedMatches's own doc comment for why a single
+//    skill-balanced pass isn't enough on its own.
+// 2. `generateBalancedMatches` sorts the eligible pool by priority (fewest games
 //    played, then longest rest -- sortByPriority), then repeatedly carves off a
 //    bounded "shortlist" (roughly one round's worth of courts, plus a little
 //    slack) and asks `optimizeRound` to jointly partition it into foursomes that
 //    minimize total cost -- not "best match for court 1, then best match for
 //    court 2", which can strand weaker players for the later courts (see the
 //    module's section-4 requirement in the originating spec). This repeats,
-//    round after round, until enough distinct groups exist to fill `count`
-//    suggestions or the pool runs out.
-// 2. For each foursome, `allSplitsRanked` tries all 3 ways to split it into two
+//    round after round, until enough distinct groups exist to fill its budget
+//    of suggestions or the pool runs out.
+// 3. For each foursome, `allSplitsRanked` tries all 3 ways to split it into two
 //    teams of two and scores each by team balance + rest/repeat/preference
-//    nudges, picking the cheapest.
-// 3. `matchQuality` grades a finished team1-vs-team2 split using only the
+//    nudges, picking the cheapest. `generateFairnessMatches` reuses this same
+//    per-foursome split logic (via bestSplitAvoidingRepeats) -- only how the
+//    foursomes themselves get formed differs between the two tiers.
+// 4. `matchQuality` grades a finished team1-vs-team2 split using only the
 //    players' levels (skill spread + team balance) -- deliberately independent of
 //    rest/history, since a grade should describe the match itself, not how it was
 //    chosen. The same spread+balance formula is also the dominant term inside the
@@ -364,12 +372,15 @@ function pairKey(team1: PlayerForMatchmaking[], team2: PlayerForMatchmaking[]): 
 // form that many distinct groups of 4, the remaining pairings for groups already
 // used are offered instead, so even a very small club still gets a few genuinely
 // different options rather than just one.
-export function generateSuggestedMatches(
+//
+// This is the "balanced" tier of generateSuggestedMatches below -- see that
+// function's doc comment for why it's only half the story.
+function generateBalancedMatches(
   pool: PlayerForMatchmaking[],
   lastPartnerOf: Map<number, number>,
-  count = 8,
-  courtCount = 3,
-  lastOpponentOf: Map<number, number> = new Map(),
+  count: number,
+  courtCount: number,
+  lastOpponentOf: Map<number, number>,
 ): SuggestedMatch[] {
   if (pool.length < 4) return [];
   const ranked = sortByPriority(pool);
@@ -442,4 +453,99 @@ export function generateSuggestedMatches(
   }
 
   return suggestions;
+}
+
+// Plain, skill-blind foursomes that specifically sweep up whoever
+// generateBalancedMatches above didn't cover at all (`coveredIds` -- every
+// player who appears in at least one balanced-tier suggestion). Those
+// uncovered players are put at the very FRONT of the priority queue, ahead of
+// everyone the balanced tier already placed, so they land in the first chunk
+// of 4 rather than risking being the trailing remainder yet again -- borrowing
+// whichever already-covered players are needed to round a chunk out to 4 (see
+// the module doc comment: sharing a player across several suggestions is
+// normal here, since only one suggestion actually gets picked).
+//
+// This is the "fairness" tier of generateSuggestedMatches below, and it
+// exists to rescue a player generateBalancedMatches can structurally strand.
+// Picture a pool that's almost all one skill level with a single outlier
+// (say, eleven "Chick"-level players and one lone "Roast"): optimizeRound's
+// greedy construction always prefers filling a foursome with same-level
+// players when enough are available (it minimizes skill spread), and its
+// local-improvement pass only ever swaps a bench player INTO a group if doing
+// so lowers that group's cost -- which swapping in the one differently-leveled
+// player never does next to an otherwise-uniform trio. If the pool size isn't
+// an exact multiple of 4, that outlier can end up as the sole leftover "bench"
+// player for a whole round, which then falls through to the next round
+// unchanged -- and if what's left ever drops below 4 players, they're never
+// placed in any group again, so they silently never appear in a single
+// suggested match. Simply re-sorting the whole pool by priority and chunking
+// front-to-back (without the uncovered-first reordering) would reproduce that
+// same trailing-remainder problem one level up instead of fixing it -- it's
+// specifically the "uncovered players go first" step that guarantees they
+// land inside a chunk rather than past the end of one.
+function generateFairnessMatches(
+  pool: PlayerForMatchmaking[],
+  coveredIds: Set<number>,
+  lastPartnerOf: Map<number, number>,
+  lastOpponentOf: Map<number, number>,
+  count: number,
+  usedPairKeys: Set<string>,
+): SuggestedMatch[] {
+  if (count <= 0 || pool.length < 4) return [];
+  const ranked = sortByPriority(pool);
+  const uncovered = ranked.filter((p) => !coveredIds.has(p.id));
+  const alreadyCovered = ranked.filter((p) => coveredIds.has(p.id));
+  const queue = [...uncovered, ...alreadyCovered];
+
+  const suggestions: SuggestedMatch[] = [];
+  for (let i = 0; i + 4 <= queue.length && suggestions.length < count; i += 4) {
+    const four = queue.slice(i, i + 4);
+    const split = bestSplitAvoidingRepeats(four, lastPartnerOf, lastOpponentOf);
+    const key = pairKey(split.team1, split.team2);
+    if (usedPairKeys.has(key)) continue;
+    usedPairKeys.add(key);
+    suggestions.push({ team1: split.team1, team2: split.team2 });
+  }
+
+  return suggestions;
+}
+
+// The public entry point: builds up to `count` suggested matchups, tiered
+// across two different strategies rather than one. The top half of the
+// budget is `generateBalancedMatches` -- skill-matched, round-optimized,
+// unchanged from how this always worked. The bottom half is
+// `generateFairnessMatches` -- plain priority order, no skill-balancing at
+// all. The second tier exists specifically so a skill outlier the balanced
+// pass alone can permanently strand (see generateFairnessMatches's doc
+// comment) still gets suggested a match, and more generally so whoever's
+// played the fewest games always shows up *somewhere* in the queue even when
+// the balanced pass's skill-matching logic would otherwise skip over them. A
+// 4-suggestion budget becomes "2 balanced + 2 fairness"; the real 8-suggestion
+// default becomes "4 + 4". If the balanced tier can't fill its own half (a
+// small pool), the fairness tier picks up the slack rather than leaving the
+// budget unused.
+export function generateSuggestedMatches(
+  pool: PlayerForMatchmaking[],
+  lastPartnerOf: Map<number, number>,
+  count = 8,
+  courtCount = 3,
+  lastOpponentOf: Map<number, number> = new Map(),
+): SuggestedMatch[] {
+  if (pool.length < 4) return [];
+
+  const balancedBudget = Math.ceil(count / 2);
+  const balanced = generateBalancedMatches(pool, lastPartnerOf, balancedBudget, courtCount, lastOpponentOf);
+
+  const coveredIds = new Set(balanced.flatMap((m) => [...m.team1, ...m.team2]).map((p) => p.id));
+  const usedPairKeys = new Set(balanced.map((m) => pairKey(m.team1, m.team2)));
+  const fairness = generateFairnessMatches(
+    pool,
+    coveredIds,
+    lastPartnerOf,
+    lastOpponentOf,
+    count - balanced.length,
+    usedPairKeys,
+  );
+
+  return [...balanced, ...fairness];
 }
