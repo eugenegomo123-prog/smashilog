@@ -19,6 +19,7 @@ export interface ShareAwards {
   bestDiff: Player;
   streakPlayers: Player[];
   streakValue: number;
+  bestPair: { names: [string, string]; diff: number } | null;
 }
 
 export interface ResultsImageData {
@@ -277,6 +278,13 @@ function drawContent(ctx: CanvasRenderingContext2D, data: ResultsImageData): num
         icon: "🔥",
         label: "Longest win streak",
         value: `${awards.streakPlayers.map((p) => p.name).join(", ")} (${awards.streakValue})`,
+      });
+    }
+    if (awards.bestPair) {
+      rows.push({
+        icon: "🤝",
+        label: "Best pair",
+        value: `${awards.bestPair.names.join(" & ")} (+${awards.bestPair.diff})`,
       });
     }
 

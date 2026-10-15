@@ -114,6 +114,25 @@ function MatchBadges({ flags }: { flags: { fireMatch: boolean; topMatch: boolean
   );
 }
 
+// The pair that pulled off the biggest blowout this session -- the winning
+// team of whichever completed match has the largest |score1 - score2|. Null
+// when there's no decisive (non-tied) completed match yet.
+function bestPairAward(players: Player[], history: Match[]): { names: [string, string]; diff: number } | null {
+  let best: { ids: number[]; diff: number } | null = null;
+  for (const m of history) {
+    if (m.score1 == null || m.score2 == null) continue;
+    const diff = Math.abs(m.score1 - m.score2);
+    if (diff <= 0) continue;
+    if (!best || diff > best.diff) {
+      best = { ids: m.score1 > m.score2 ? m.team1 : m.team2, diff };
+    }
+  }
+  if (!best) return null;
+  const byId = new Map(players.map((p) => [p.id, p]));
+  const names = best.ids.map((id) => byId.get(id)?.name ?? "?");
+  return { names: [names[0] ?? "?", names[1] ?? "?"], diff: best.diff };
+}
+
 function buildAwards(players: Player[], history: Match[]) {
   const withGames = players.filter((p) => p.gamesPlayed > 0);
   if (withGames.length === 0) return null;
@@ -133,7 +152,9 @@ function buildAwards(players: Player[], history: Match[]) {
   const streakPlayers =
     streakValue >= 2 ? withGames.filter((p) => (longestStreaks.get(p.id) ?? 0) === streakValue) : [];
 
-  return { mostGames, bestDiff, streakPlayers, streakValue };
+  const bestPair = bestPairAward(players, history);
+
+  return { mostGames, bestDiff, streakPlayers, streakValue, bestPair };
 }
 
 // Share-image plumbing (the actual drawing lives in src/shareImage.ts, shared
@@ -752,8 +773,8 @@ function RankingTab({ session, players, history }: { session: Session; players: 
                   <tr key={p.id}>
                     <td>{i + 4}</td>
                     <td>
-                      {p.name} {fireBadge(p.currentStreak)}{" "}
-                      <span className="rank-row-icon" style={{ color: "var(--muted)" }}><RankAvatar player={p} /></span>
+                      <span className="rank-row-icon" style={{ color: "var(--muted)" }}><RankAvatar player={p} /></span>{" "}
+                      {p.name} {fireBadge(p.currentStreak)}
                     </td>
                     <td>{p.wins}-{p.losses}</td>
                     <td>{p.gamesPlayed ? Math.round((p.wins / p.gamesPlayed) * 100) : 0}%</td>
@@ -790,6 +811,12 @@ function AwardsPanel({ awards }: { awards: NonNullable<ReturnType<typeof buildAw
           <div className="row between">
             <span>🔥 Longest win streak</span>
             <strong>{awards.streakPlayers.map((p) => p.name).join(", ")} ({awards.streakValue})</strong>
+          </div>
+        )}
+        {awards.bestPair && (
+          <div className="row between">
+            <span>🤝 Best pair</span>
+            <strong>{awards.bestPair.names.join(" & ")} (+{awards.bestPair.diff})</strong>
           </div>
         )}
       </div>
