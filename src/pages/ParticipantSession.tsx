@@ -166,6 +166,21 @@ export default function ParticipantSession() {
   const [myId, setMyId] = useState<number | null>(
     () => Number(localStorage.getItem(playerKey(sessionId))) || null,
   );
+  // A logged-in account player's id never lands in localStorage (see
+  // ParticipantJoin.tsx -- the account join flow just navigates straight
+  // here), so for them myId starts out null and is only filled in once the
+  // effect below resolves. The polling effect further down is set up once on
+  // mount ([sessionId] only, so its 4-second setInterval keeps calling the
+  // very first `load` closure for the whole session) and checkStatusChange
+  // needs today's myId every time it fires, not whatever myId happened to be
+  // at that one moment -- so it reads this ref instead of the plain state
+  // variable, which a stale closure would otherwise freeze at its initial
+  // (often still-null, for an account player) value for the rest of the
+  // session.
+  const myIdRef = useRef<number | null>(myId);
+  useEffect(() => {
+    myIdRef.current = myId;
+  }, [myId]);
 
   useEffect(() => {
     if (!api.isPlayerLoggedIn()) return;
@@ -207,8 +222,9 @@ export default function ParticipantSession() {
   // are tracked for comparison but never popped up -- the player just set
   // that themselves, so there's nothing to tell them.
   function checkStatusChange(allPlayers: Player[], ongoing: Match[], queued: Match[], courtLabels: Court[]) {
-    if (!myId) return;
-    const player = allPlayers.find((p) => p.id === myId);
+    const myCurrentId = myIdRef.current;
+    if (!myCurrentId) return;
+    const player = allPlayers.find((p) => p.id === myCurrentId);
     if (!player) return;
     const status = myCurrentStatus(player, ongoing, queued, courtLabels);
     const key = statusKey(status);
