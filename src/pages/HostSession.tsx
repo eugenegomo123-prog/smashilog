@@ -19,7 +19,7 @@ import { RankAvatar } from "../rankAvatar";
 // generator (worker/lib/regenerate.ts) -- imported directly rather than
 // duplicated so the grade shown here always matches the logic that actually
 // picked the match. See that file's header comment for why this is safe.
-import { matchQuality, type MatchQuality } from "../../worker/lib/matchmaking";
+import { matchQuality, completeBalancedMatch, type MatchQuality } from "../../worker/lib/matchmaking";
 
 type Tab = "players" | "courts" | "queue" | "ranking" | "history" | "settings";
 
@@ -951,6 +951,51 @@ function CustomMatchBuilder({
     return `${justPlayed.has(id) ? " 🥵" : ""}${restingLong.has(id) ? " ⏳" : ""}`;
   }
 
+  // Fills in whichever of this team's two slots are still empty from
+  // `resultTeam` (completeBalancedMatch's pick for this team -- the host's
+  // own already-chosen player plus whatever it added), matched by id rather
+  // than position so it works no matter which of the two slots was the one
+  // left empty.
+  function applyTeamPicks(
+    currentA: number | "",
+    setA: (v: number) => void,
+    currentB: number | "",
+    setB: (v: number) => void,
+    resultTeam: Player[],
+  ) {
+    const alreadyIds = new Set([currentA, currentB].filter((v): v is number => v !== ""));
+    const newPicks = resultTeam.filter((p) => !alreadyIds.has(p.id));
+    let i = 0;
+    if (currentA === "") setA(newPicks[i++].id);
+    if (currentB === "") setB(newPicks[i++].id);
+  }
+
+  // Keeps whichever players the host already picked exactly where they put
+  // them, and fills only the still-empty slots with whoever best balances
+  // the finished match by skill level (see completeBalancedMatch's own doc
+  // comment). A convenience autofill only -- the host can still change any
+  // slot afterward, nothing is queued until "Add to queue" is pressed.
+  function balanceMatch() {
+    setError("");
+    const byId = new Map(eligible.map((p) => [p.id, p]));
+    const filledTeam1 = [team1a, team1b].filter((v): v is number => v !== "").map((id) => byId.get(id)!);
+    const filledTeam2 = [team2a, team2b].filter((v): v is number => v !== "").map((id) => byId.get(id)!);
+    const candidates = eligible.filter((p) => !chosen.includes(p.id));
+
+    const result = completeBalancedMatch(filledTeam1, filledTeam2, candidates);
+    if (!result) {
+      setError(
+        filledTeam1.length === 2 && filledTeam2.length === 2
+          ? "Both teams are already full."
+          : "Not enough other available players to balance this match.",
+      );
+      return;
+    }
+
+    applyTeamPicks(team1a, setTeam1a, team1b, setTeam1b, result.team1 as Player[]);
+    applyTeamPicks(team2a, setTeam2a, team2b, setTeam2b, result.team2 as Player[]);
+  }
+
   function pillSelect(value: number | "", onChange: (v: number | "") => void, label: string) {
     return (
       <select value={value} onChange={(e) => onChange(e.target.value ? Number(e.target.value) : "")}>
@@ -998,14 +1043,18 @@ function CustomMatchBuilder({
         {pillSelect(team2a, setTeam2a, "Player A")}
         {pillSelect(team2b, setTeam2b, "Player B")}
       </div>
-      <button
-        className="btn primary"
-        style={{ marginTop: 12 }}
-        onClick={createMatch}
-        disabled={submitting || queueFull}
-      >
-        {queueFull ? "Queue is full" : "Add to queue"}
-      </button>
+      <div className="row" style={{ marginTop: 12 }}>
+        <button
+          className="btn"
+          onClick={balanceMatch}
+          disabled={submitting || (team1a !== "" && team1b !== "" && team2a !== "" && team2b !== "")}
+        >
+          ⚖️ Balance match
+        </button>
+        <button className="btn primary" onClick={createMatch} disabled={submitting || queueFull}>
+          {queueFull ? "Queue is full" : "Add to queue"}
+        </button>
+      </div>
       {error && <div className="error-text" style={{ marginTop: 8 }}>{error}</div>}
       {eligible.length < 4 && (
         <div className="empty-state" style={{ padding: "12px 0 0" }}>

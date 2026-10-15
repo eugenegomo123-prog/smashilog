@@ -549,3 +549,65 @@ export function generateSuggestedMatches(
 
   return [...balanced, ...fairness];
 }
+
+// ---------------------------------------------------------------------------
+// Custom-match balancing -- autofill for the host's manual match builder.
+// ---------------------------------------------------------------------------
+
+// Every k-sized combination of `items`, as a plain array of arrays. Only ever
+// called with k <= 4 (completeBalancedMatch below never needs more than 4
+// players to fill in), so this stays cheap even though it isn't written for
+// huge inputs.
+function combinations<T>(items: T[], k: number): T[][] {
+  if (k === 0) return [[]];
+  if (k > items.length) return [];
+  const [first, ...rest] = items;
+  const withFirst = combinations(rest, k - 1).map((c) => [first, ...c]);
+  const withoutFirst = combinations(rest, k);
+  return [...withFirst, ...withoutFirst];
+}
+
+// Given however many players the host has already picked for each team (0-2
+// apiece) in the custom-match builder, choose whichever additional players
+// from `candidates` best balance the finished 2v2 match by skill level --
+// the same spread + team-balance cost matchQuality grades a match with.
+// Deliberately leaves the host's own picks exactly on the team they put them
+// on: this only ever fills in the empty slots, it never reassigns an
+// already-chosen player to the other team (unlike bestSplitAvoidingRepeats,
+// which is free to repick any of the 3 splits of a fixed foursome -- that's
+// the right thing for a from-scratch suggestion, but not for a host who
+// deliberately placed someone on "Team 1"). Returns null when there's
+// nothing to fill (both teams already have 2) or not enough candidates to
+// fill what's missing.
+//
+// This is a pure autofill: nothing is created or sent anywhere until the
+// host presses the builder's own "Add to queue" button, same as any other
+// custom match, so brute-forcing every combination is fine -- a single
+// session's eligible pool is small enough (tens of players, not thousands)
+// that even choosing all 4 from scratch is instant.
+export function completeBalancedMatch(
+  filledTeam1: PlayerForMatchmaking[],
+  filledTeam2: PlayerForMatchmaking[],
+  candidates: PlayerForMatchmaking[],
+): { team1: PlayerForMatchmaking[]; team2: PlayerForMatchmaking[] } | null {
+  const need1 = 2 - filledTeam1.length;
+  const need2 = 2 - filledTeam2.length;
+  if (need1 < 0 || need2 < 0) return null;
+  const totalNeed = need1 + need2;
+  if (totalNeed === 0 || candidates.length < totalNeed) return null;
+
+  let best: { team1: PlayerForMatchmaking[]; team2: PlayerForMatchmaking[]; cost: number } | null = null;
+
+  for (const combo of combinations(candidates, totalNeed)) {
+    for (const team1Picks of combinations(combo, need1)) {
+      const team2Picks = combo.filter((p) => !team1Picks.includes(p));
+      if (team2Picks.length !== need2) continue;
+      const team1 = [...filledTeam1, ...team1Picks];
+      const team2 = [...filledTeam2, ...team2Picks];
+      const cost = matchQuality([team1[0].level, team1[1].level], [team2[0].level, team2[1].level]).cost;
+      if (!best || cost < best.cost) best = { team1, team2, cost };
+    }
+  }
+
+  return best ? { team1: best.team1, team2: best.team2 } : null;
+}
