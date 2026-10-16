@@ -6,13 +6,16 @@
 // Design: reuses this app's existing dark "achievement" look (the same
 // black-to-dark-brown radial vignette as .rank-badge-card in styles.css) and
 // its egg-to-chicken LEVEL_ICON set, so a shared card reads as the same app
-// as the Rank tab. The canvas height is NOT fixed -- it's measured from the
+// as the Rank tab -- right down to showing each account holder's own
+// uploaded photo next to their name/podium spot (same picture-or-level-icon
+// fallback as RankAvatar, src/rankAvatar.tsx), guests included via their
+// level icon. The canvas height is NOT fixed -- it's measured from the
 // actual content first (podium + awards + however many standings rows fit),
 // so a 2-player pickup game gets a short, tight card instead of a mile of
 // empty space, and a big roster gets a taller one instead of being cut off.
 // Only a very large roster (12+ players outside the podium) gets truncated
 // with a "+N more players" line, so the image never grows unreasonably tall.
-import { LEVEL_ICON, type Player } from "./api";
+import { LEVEL_ICON, playerPictureUrl, type Player } from "./api";
 
 export interface ShareAwards {
   mostGames: Player[];
@@ -110,6 +113,58 @@ function wrapLines(ctx: CanvasRenderingContext2D, text: string, maxWidth: number
   return lines;
 }
 
+// Loads one player's uploaded photo for drawing into the canvas, resolving
+// null (never rejecting) rather than throwing on any failure -- no account,
+// no picture set (the endpoint 404s, same as RankAvatar's onError), a slow
+// connection, or being offline -- so a bad load just falls back to the level
+// icon instead of breaking the whole share image. The 5s cap keeps one stuck
+// request from hanging the entire share/download flow.
+function loadPlayerPhoto(player: Player): Promise<HTMLImageElement | null> {
+  if (!player.accountId) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (result: HTMLImageElement | null) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+    const img = new Image();
+    img.onload = () => finish(img);
+    img.onerror = () => finish(null);
+    img.src = playerPictureUrl(player);
+    setTimeout(() => finish(null), 5000);
+  });
+}
+
+// Preloads every account holder's photo among `players` (guests resolve
+// immediately to nothing to draw), keyed by player id so drawContent can
+// look one up for whichever player it's currently drawing. Missing/failed
+// loads are simply absent from the map -- callers treat that the same as
+// "no picture", which is exactly what it means.
+async function loadPlayerPhotos(players: Player[]): Promise<Map<number, HTMLImageElement>> {
+  const entries = await Promise.all(
+    players.map(async (p): Promise<[number, HTMLImageElement | null]> => [p.id, await loadPlayerPhoto(p)]),
+  );
+  const map = new Map<number, HTMLImageElement>();
+  for (const [id, img] of entries) if (img) map.set(id, img);
+  return map;
+}
+
+// Clips to a circle of diameter `d` centered on (cx, cy) and draws `image`
+// into it, cover-fit (scaled up to fill the circle's bounding square and
+// centered, same crop behavior as the on-screen `object-fit: cover`).
+function drawClippedImage(ctx: CanvasRenderingContext2D, image: HTMLImageElement, cx: number, cy: number, d: number) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, d / 2, 0, Math.PI * 2);
+  ctx.clip();
+  const scale = Math.max(d / image.naturalWidth, d / image.naturalHeight);
+  const iw = image.naturalWidth * scale;
+  const ih = image.naturalHeight * scale;
+  ctx.drawImage(image, cx - iw / 2, cy - ih / 2, iw, ih);
+  ctx.restore();
+}
+
 function drawAvatar(
   ctx: CanvasRenderingContext2D,
   cx: number,
@@ -117,36 +172,87 @@ function drawAvatar(
   d: number,
   gradStops: [string, string],
   level: Player["level"],
+  image: HTMLImageElement | null,
 ) {
   const r = d / 2;
-  const grad = ctx.createLinearGradient(cx - r, cy - r, cx + r, cy + r);
-  grad.addColorStop(0, gradStops[0]);
-  grad.addColorStop(1, gradStops[1]);
   ctx.save();
   ctx.shadowColor = "rgba(0,0,0,0.45)";
   ctx.shadowBlur = 14;
   ctx.shadowOffsetY = 4;
   ctx.beginPath();
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
-  ctx.fillStyle = grad;
+  if (image) {
+    // Just a shadow-casting fill here -- the image itself (drawn below, once
+    // the shadow is no longer active) fully covers it.
+    ctx.fillStyle = "#000000";
+  } else {
+    const grad = ctx.createLinearGradient(cx - r, cy - r, cx + r, cy + r);
+    grad.addColorStop(0, gradStops[0]);
+    grad.addColorStop(1, gradStops[1]);
+    ctx.fillStyle = grad;
+  }
   ctx.fill();
   ctx.restore();
+
+  if (image) drawClippedImage(ctx, image, cx, cy, d);
+
   ctx.beginPath();
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
   ctx.strokeStyle = "rgba(0,0,0,0.25)";
   ctx.lineWidth = 2;
   ctx.stroke();
+
+  if (!image) {
+    // Scoped so textAlign/textBaseline/font never leak into whatever the
+    // caller draws next (bit us once already: it silently corrupted the
+    // standings-row name text drawn right after drawInlineAvatar below).
+    ctx.save();
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = `${Math.round(d * 0.46)}px ${FONT}`;
+    ctx.fillText(LEVEL_ICON[level] ?? "🐔", cx, cy + 2);
+    ctx.restore();
+  }
+}
+
+// Same picture-or-level-icon fallback as drawAvatar above, but with no
+// background circle behind the fallback icon -- matches the plain,
+// no-backdrop look of the on-screen .rank-row-icon next to a name in the
+// standings table, rather than the podium's colored badge.
+function drawInlineAvatar(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  d: number,
+  level: Player["level"],
+  image: HTMLImageElement | null,
+) {
+  if (image) {
+    drawClippedImage(ctx, image, cx, cy, d);
+    return;
+  }
+  // Scoped (see drawAvatar's comment above) -- this one previously leaked
+  // textAlign: "center" into the player-name text drawn right after it.
+  ctx.save();
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.font = `${Math.round(d * 0.46)}px ${FONT}`;
-  ctx.fillText(LEVEL_ICON[level] ?? "🐔", cx, cy + 2);
+  ctx.font = `${Math.round(d * 0.78)}px ${FONT}`;
+  ctx.fillText(LEVEL_ICON[level] ?? "🐔", cx, cy + 1);
+  ctx.restore();
 }
 
 function drawPodiumColumn(
   ctx: CanvasRenderingContext2D,
-  opts: { xLeft: number; width: number; standBottomY: number; place: 1 | 2 | 3; player: Player | undefined },
+  opts: {
+    xLeft: number;
+    width: number;
+    standBottomY: number;
+    place: 1 | 2 | 3;
+    player: Player | undefined;
+    image: HTMLImageElement | null;
+  },
 ) {
-  const { xLeft, width, standBottomY, place, player } = opts;
+  const { xLeft, width, standBottomY, place, player, image } = opts;
   if (!player) return;
   const isGold = place === 1;
   const isSilver = place === 2;
@@ -178,7 +284,7 @@ function drawPodiumColumn(
     : isSilver
       ? [COLORS.silverLight, COLORS.silverDeep]
       : [COLORS.bronzeLight, COLORS.bronzeDeep];
-  drawAvatar(ctx, cx, avatarCy, avatarD, gradStops, player.level);
+  drawAvatar(ctx, cx, avatarCy, avatarD, gradStops, player.level, image);
   y += avatarD + gapAvatarName;
 
   ctx.textAlign = "center";
@@ -222,7 +328,11 @@ function drawPodiumColumn(
 // the content height before the footer gets appended). Called twice: once on
 // a throwaway canvas purely to measure that final y, then again on the real,
 // correctly-sized canvas to actually draw -- see buildResultsImageBlob.
-function drawContent(ctx: CanvasRenderingContext2D, data: ResultsImageData): number {
+function drawContent(
+  ctx: CanvasRenderingContext2D,
+  data: ResultsImageData,
+  images: Map<number, HTMLImageElement>,
+): number {
   const { sessionName, dateLabel, sorted, awards } = data;
   let y = 72;
 
@@ -254,9 +364,10 @@ function drawContent(ctx: CanvasRenderingContext2D, data: ResultsImageData): num
     const col1x = MARGIN + colWidth + colGap;
     const col3x = MARGIN + (colWidth + colGap) * 2;
     const standBottomY = y + 352;
-    drawPodiumColumn(ctx, { xLeft: col2x, width: colWidth, standBottomY, place: 2, player: top3[1] });
-    drawPodiumColumn(ctx, { xLeft: col1x, width: colWidth, standBottomY, place: 1, player: top3[0] });
-    drawPodiumColumn(ctx, { xLeft: col3x, width: colWidth, standBottomY, place: 3, player: top3[2] });
+    const imageFor = (p: Player | undefined) => (p ? images.get(p.id) ?? null : null);
+    drawPodiumColumn(ctx, { xLeft: col2x, width: colWidth, standBottomY, place: 2, player: top3[1], image: imageFor(top3[1]) });
+    drawPodiumColumn(ctx, { xLeft: col1x, width: colWidth, standBottomY, place: 1, player: top3[0], image: imageFor(top3[0]) });
+    drawPodiumColumn(ctx, { xLeft: col3x, width: colWidth, standBottomY, place: 3, player: top3[2], image: imageFor(top3[2]) });
     y = standBottomY + 36;
   }
 
@@ -374,10 +485,15 @@ function drawContent(ctx: CanvasRenderingContext2D, data: ResultsImageData): num
       ctx.fillStyle = COLORS.mutedDim;
       ctx.fillText(String(rank), MARGIN + 28, midY);
 
+      const avatarD = 34;
+      const avatarGap = 14;
+      const nameStartX = MARGIN + 70 + avatarD + avatarGap;
+      drawInlineAvatar(ctx, MARGIN + 70 + avatarD / 2, ry + rowH / 2, avatarD, p.level, images.get(p.id) ?? null);
+
       ctx.font = `600 26px ${FONT}`;
       ctx.fillStyle = COLORS.white;
       const streakTag = p.currentStreak >= 3 ? " 🔥" : "";
-      ctx.fillText(truncateToWidth(ctx, p.name, 300) + streakTag, MARGIN + 70, midY);
+      ctx.fillText(truncateToWidth(ctx, p.name, 300 - avatarD - avatarGap) + streakTag, nameStartX, midY);
 
       ctx.textAlign = "right";
       ctx.font = `500 24px ${FONT}`;
@@ -459,14 +575,14 @@ function canvasToPngBlob(canvas: HTMLCanvasElement): Promise<Blob> {
 // Measures content on a throwaway canvas, then draws the real image onto a
 // canvas sized to fit exactly -- see the module comment up top for why.
 export async function buildResultsImageBlob(data: ResultsImageData): Promise<Blob> {
-  await ensureFontReady();
+  const [, images] = await Promise.all([ensureFontReady(), loadPlayerPhotos(data.sorted)]);
 
   const measure = document.createElement("canvas");
   measure.width = WIDTH;
   measure.height = 4000; // generous scratch space, never shown
   const measureCtx = measure.getContext("2d");
   if (!measureCtx) throw new Error("Canvas not supported");
-  const contentBottomY = drawContent(measureCtx, data);
+  const contentBottomY = drawContent(measureCtx, data, images);
 
   const height = Math.max(760, Math.round(contentBottomY + FOOTER_H));
   const canvas = document.createElement("canvas");
@@ -475,7 +591,7 @@ export async function buildResultsImageBlob(data: ResultsImageData): Promise<Blo
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Canvas not supported");
   paintBackground(ctx, WIDTH, height);
-  drawContent(ctx, data);
+  drawContent(ctx, data, images);
   paintFooter(ctx, WIDTH, height);
 
   return canvasToPngBlob(canvas);
