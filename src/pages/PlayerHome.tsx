@@ -121,6 +121,37 @@ interface AccountRankEntry {
 // mmrToTier bands.
 const RANK_DIVISIONS = ["Legend", "Champion", "Ace", "Smash", "Rally", "Fledgling"];
 
+// The first month Overall Ranking's month filter offers -- there's nothing
+// meaningful to show before this, so the dropdown doesn't bother listing it.
+const RANKING_MONTH_START = "2026-09";
+
+// Every "YYYY-MM" month from RANKING_MONTH_START through the current month,
+// newest first, each paired with a human label ("September 2026"). Computed
+// fresh on each call (off the wall-clock "now") rather than hardcoded, so the
+// list keeps growing on its own as real months pass -- no yearly upkeep.
+function monthOptions(): { value: string; label: string }[] {
+  const [startYear, startMonth] = RANKING_MONTH_START.split("-").map(Number);
+  const now = new Date();
+  let year = now.getFullYear();
+  let month = now.getMonth() + 1; // 1-12, to match the "YYYY-MM" value format
+
+  const options: { value: string; label: string }[] = [];
+  while (year > startYear || (year === startYear && month >= startMonth)) {
+    options.push({
+      value: `${year}-${String(month).padStart(2, "0")}`,
+      // Anchored at UTC midnight on the 1st so the label can't drift a month
+      // off in a timezone behind/ahead of UTC.
+      label: new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString(undefined, { month: "long", year: "numeric" }),
+    });
+    month -= 1;
+    if (month === 0) {
+      month = 12;
+      year -= 1;
+    }
+  }
+  return options;
+}
+
 // Builds a CSV file right in the browser and triggers a download -- no
 // server round-trip needed, since every table this is used from is already
 // fully loaded on the page by the time someone clicks "Download CSV".
@@ -146,7 +177,6 @@ function RankingTab() {
   const [entries, setEntries] = useState<AccountRankEntry[] | null>(null);
   const [divisionFilter, setDivisionFilter] = useState<string | null>(null);
   const me = api.playerUsername();
-  const currentMonth = new Date().toISOString().slice(0, 7);
 
   useEffect(() => {
     setEntries(null);
@@ -163,12 +193,14 @@ function RankingTab() {
         <button className={`btn ${scope === "all" ? "primary" : ""}`} onClick={() => setScope("all")}>
           All Time
         </button>
-        <input
-          type="month"
-          value={scope !== "all" ? scope : ""}
-          max={currentMonth}
-          onChange={(e) => e.target.value && setScope(e.target.value)}
-        />
+        <select value={scope !== "all" ? scope : ""} onChange={(e) => e.target.value && setScope(e.target.value)}>
+          <option value="">Pick a month…</option>
+          {monthOptions().map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="row" style={{ marginBottom: 16, flexWrap: "wrap", gap: 6 }}>
