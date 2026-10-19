@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api, TIER_BADGE_IMAGE, rankScore, LEVELS, LEVEL_ICON, LEVEL_LABEL, type Level } from "../api";
 import { compressImageFile } from "../imageUpload";
 import { AccountAvatar } from "../accountAvatar";
+import { OverallRecordCard, type OverallRecordStats } from "../overallRecord";
 
 type Tab = "stats" | "rank" | "ranking" | "history" | "account";
 const TABS: Tab[] = ["stats", "rank", "ranking", "history", "account"];
@@ -13,17 +14,6 @@ interface MeInfo {
   activeParticipation: { sessionId: number; sessionName: string; approved: boolean } | null;
   accountId: number;
   pictureUpdatedAt: string | null;
-}
-
-interface OverallStats {
-  sessionsPlayed: number;
-  gamesPlayed: number;
-  wins: number;
-  losses: number;
-  pointsFor: number;
-  pointsAgainst: number;
-  averagePointDiff: number;
-  highestWinStreak: number;
 }
 
 interface JoinableSession {
@@ -315,7 +305,7 @@ function RankingTab() {
 function StatsTab() {
   const navigate = useNavigate();
   const [me, setMe] = useState<MeInfo | null>(null);
-  const [stats, setStats] = useState<OverallStats | null>(null);
+  const [stats, setStats] = useState<OverallRecordStats | null>(null);
   const [sessionsList, setSessionsList] = useState<JoinableSession[] | null>(null);
 
   useEffect(() => {
@@ -323,8 +313,6 @@ function StatsTab() {
     api.getOverallStats().then(setStats);
     api.getJoinableSessions().then(setSessionsList);
   }, []);
-
-  const winPct = stats && stats.gamesPlayed ? Math.round((stats.wins / stats.gamesPlayed) * 100) : 0;
 
   return (
     <div className="stack">
@@ -348,33 +336,7 @@ function StatsTab() {
         </div>
       )}
 
-      {stats && (
-        <div className="card">
-          <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 8 }}>Overall record</div>
-          <div className="row between" style={{ marginBottom: 6 }}>
-            <span>Sessions played</span>
-            <strong>{stats.sessionsPlayed}</strong>
-          </div>
-          <div className="row between" style={{ marginBottom: 6 }}>
-            <span>Games played</span>
-            <strong>{stats.gamesPlayed}</strong>
-          </div>
-          <div className="row between" style={{ marginBottom: 6 }}>
-            <span>Wins - Losses</span>
-            <strong>{stats.wins}-{stats.losses} ({winPct}%)</strong>
-          </div>
-          <div className="row between" style={{ marginBottom: 6 }}>
-            <span>Average point diff</span>
-            <strong style={{ color: stats.averagePointDiff > 0 ? "var(--good)" : stats.averagePointDiff < 0 ? "var(--bad)" : "var(--muted)" }}>
-              {stats.averagePointDiff > 0 ? `+${stats.averagePointDiff.toFixed(1)}` : stats.averagePointDiff.toFixed(1)}
-            </strong>
-          </div>
-          <div className="row between">
-            <span>Highest win streak</span>
-            <strong>{stats.highestWinStreak}</strong>
-          </div>
-        </div>
-      )}
+      {stats && <OverallRecordCard stats={stats} />}
 
       <h3 style={{ fontSize: 15, color: "var(--muted)" }}>Join a session</h3>
       <div className="stack">

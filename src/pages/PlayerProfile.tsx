@@ -2,22 +2,14 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { accountPictureUrl, api, TIER_BADGE_IMAGE } from "../api";
 import { AccountAvatar } from "../accountAvatar";
+import { OverallRecordCard, type OverallRecordStats } from "../overallRecord";
 
 // Same shape as api.ts's getAccountProfile() response -- kept here rather
 // than exported from api.ts since nothing else needs it yet.
 interface AccountProfile {
   username: string;
   pictureUpdatedAt: string | null;
-  stats: {
-    sessionsPlayed: number;
-    gamesPlayed: number;
-    wins: number;
-    losses: number;
-    pointsFor: number;
-    pointsAgainst: number;
-    averagePointDiff: number;
-    highestWinStreak: number;
-  };
+  stats: OverallRecordStats;
   rating: {
     tier: string;
     division: "I" | "II" | "III" | null;
@@ -151,46 +143,8 @@ export default function PlayerProfile() {
             )}
           </div>
 
-          <div className="card" style={{ marginTop: 12 }}>
-            <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 8 }}>Overall record</div>
-            <div className="row between" style={{ marginBottom: 6 }}>
-              <span>Sessions played</span>
-              <strong>{profile.stats.sessionsPlayed}</strong>
-            </div>
-            <div className="row between" style={{ marginBottom: 6 }}>
-              <span>Games played</span>
-              <strong>{profile.stats.gamesPlayed}</strong>
-            </div>
-            <div className="row between" style={{ marginBottom: 6 }}>
-              <span>Wins - Losses</span>
-              <strong>
-                {profile.stats.wins}-{profile.stats.losses}
-                {profile.stats.gamesPlayed > 0
-                  ? ` (${Math.round((profile.stats.wins / profile.stats.gamesPlayed) * 100)}%)`
-                  : ""}
-              </strong>
-            </div>
-            <div className="row between" style={{ marginBottom: 6 }}>
-              <span>Average point diff</span>
-              <strong
-                style={{
-                  color:
-                    profile.stats.averagePointDiff > 0
-                      ? "var(--good)"
-                      : profile.stats.averagePointDiff < 0
-                        ? "var(--bad)"
-                        : "var(--muted)",
-                }}
-              >
-                {profile.stats.averagePointDiff > 0
-                  ? `+${profile.stats.averagePointDiff.toFixed(1)}`
-                  : profile.stats.averagePointDiff.toFixed(1)}
-              </strong>
-            </div>
-            <div className="row between">
-              <span>Highest win streak</span>
-              <strong>{profile.stats.highestWinStreak}</strong>
-            </div>
+          <div style={{ marginTop: 12 }}>
+            <OverallRecordCard stats={profile.stats} />
           </div>
         </>
       )}

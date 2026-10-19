@@ -161,6 +161,80 @@ button, input, select {
 
 .card + .card { margin-top: 12px; }
 
+/* The "Overall record" card -- see src/overallRecord.tsx. Win rate leads as
+   the one big, bold number; the rest of the career numbers sit in a quiet
+   2x2 grid rather than a stack of thin label/value rows. */
+.overall-record-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.overall-record-pct {
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.01em;
+}
+
+.overall-record-pct-label {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.overall-record-wl {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.overall-record-wl span {
+  margin: 0 3px;
+  color: var(--border);
+}
+
+.overall-record-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--bad-bg);
+  overflow: hidden;
+  margin: 14px 0 2px;
+}
+
+.overall-record-bar span {
+  display: block;
+  height: 100%;
+  background: var(--good);
+  border-radius: 999px;
+}
+
+.overall-record-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.overall-record-tile {
+  background: var(--panel-2);
+  border-radius: 14px;
+  padding: 10px 12px;
+}
+
+.overall-record-tile-value {
+  font-size: 19px;
+  font-weight: 700;
+}
+
+.overall-record-tile-label {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
 /* Rank badge art (src/assets/ranks/*.png) is drawn to glow against a dark
    background -- on this app's light cream cards its fine white/gold
    linework all but disappears, so it always gets this dark showcase card
