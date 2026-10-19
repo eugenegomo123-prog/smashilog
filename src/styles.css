@@ -482,6 +482,63 @@ label {
   to { opacity: 1; }
 }
 
+/* Wraps an .avatar to make it clickable (PlayerProfile.tsx's header photo)
+   without changing how it looks -- a plain button reset, sized to its
+   circular contents. */
+.avatar-button {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-shrink: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.avatar-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The enlarged photo shown by PlayerProfile.tsx on an .avatar-button click,
+   inside .modal-overlay's dark backdrop. Square, since the source image
+   always is (see imageUpload.ts's compressImageFile). */
+.photo-modal {
+  position: relative;
+  max-width: min(320px, 80vw);
+  width: 100%;
+}
+
+.photo-modal img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: 20px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+}
+
+.photo-modal-close {
+  position: absolute;
+  top: -14px;
+  right: -14px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
 table.ranking {
   width: 100%;
   border-collapse: collapse;

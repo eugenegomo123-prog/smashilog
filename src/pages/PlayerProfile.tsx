@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { api, TIER_BADGE_IMAGE } from "../api";
+import { accountPictureUrl, api, TIER_BADGE_IMAGE } from "../api";
 import { AccountAvatar } from "../accountAvatar";
 
 // Same shape as api.ts's getAccountProfile() response -- kept here rather
@@ -32,13 +32,18 @@ interface AccountProfile {
 // Read-only view of another club member's public profile -- reached by
 // clicking a name on PlayerHome's Ranking tab. Shows the same rank badge and
 // overall-record numbers that page already shows for "me", just for someone
-// else: no rank-up banner (that's personal) and no account actions.
+// else: no rank-up banner (that's personal) and no account actions. The
+// header photo is clickable (when they've actually set one) and opens it
+// full-size in an overlay -- the account picture is only ever stored/served
+// at 320x320 (see imageUpload.ts's compressImageFile), so "full-size" here
+// just means bigger than the 56px header thumbnail, not higher-resolution.
 export default function PlayerProfile() {
   const { id } = useParams();
   const accountId = Number(id);
   const navigate = useNavigate();
   const [profile, setProfile] = useState<AccountProfile | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [photoOpen, setPhotoOpen] = useState(false);
 
   useEffect(() => {
     if (!api.isPlayerLoggedIn()) {
@@ -51,6 +56,14 @@ export default function PlayerProfile() {
       .catch(() => setProfile(null))
       .finally(() => setLoaded(true));
   }, [accountId]);
+
+  // Esc closes the enlarged photo, same as clicking outside it.
+  useEffect(() => {
+    if (!photoOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setPhotoOpen(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [photoOpen]);
 
   if (!api.isPlayerLoggedIn()) return null;
 
@@ -69,14 +82,50 @@ export default function PlayerProfile() {
       {profile && (
         <>
           <div className="brand" style={{ gap: 12 }}>
-            <AccountAvatar
-              username={profile.username}
-              accountId={accountId}
-              pictureUpdatedAt={profile.pictureUpdatedAt}
-              size={56}
-            />
+            {profile.pictureUpdatedAt ? (
+              <button
+                type="button"
+                className="avatar-button"
+                onClick={() => setPhotoOpen(true)}
+                aria-label={`View ${profile.username}'s full photo`}
+              >
+                <AccountAvatar
+                  username={profile.username}
+                  accountId={accountId}
+                  pictureUpdatedAt={profile.pictureUpdatedAt}
+                  size={56}
+                />
+              </button>
+            ) : (
+              <AccountAvatar
+                username={profile.username}
+                accountId={accountId}
+                pictureUpdatedAt={profile.pictureUpdatedAt}
+                size={56}
+              />
+            )}
             <h1>{profile.username}</h1>
           </div>
+
+          {photoOpen && profile.pictureUpdatedAt && (
+            <div className="modal-overlay" onClick={() => setPhotoOpen(false)}>
+              <div className="photo-modal" onClick={(e) => e.stopPropagation()}>
+                <button
+                  type="button"
+                  className="photo-modal-close"
+                  onClick={() => setPhotoOpen(false)}
+                  aria-label="Close"
+                >
+                  ×
+                </button>
+                <img
+                  src={accountPictureUrl(accountId, profile.pictureUpdatedAt)}
+                  alt={profile.username}
+                  onError={() => setPhotoOpen(false)}
+                />
+              </div>
+            </div>
+          )}
 
           <div className="rank-badge-card">
             <img
