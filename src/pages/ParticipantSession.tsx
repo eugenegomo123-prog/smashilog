@@ -866,11 +866,18 @@ function HistoryTab({
 
   return (
     <div>
+      {/* Same pill-button filter pattern as the Ranking tabs' division filter
+          (PlayerHome.tsx/HostSession.tsx) rather than a bare checkbox, so it
+          actually reads as a filter at a glance. */}
       {myId && (
-        <label className="row" style={{ marginBottom: 12, cursor: "pointer" }}>
-          <input type="checkbox" checked={onlyMine} onChange={(e) => setOnlyMine(e.target.checked)} style={{ width: "auto" }} />
-          <span>Show only my matches</span>
-        </label>
+        <div className="row" style={{ marginBottom: 12, flexWrap: "wrap", gap: 6 }}>
+          <button className={`btn small ${!onlyMine ? "primary" : ""}`} onClick={() => setOnlyMine(false)}>
+            All matches
+          </button>
+          <button className={`btn small ${onlyMine ? "primary" : ""}`} onClick={() => setOnlyMine(true)}>
+            My matches
+          </button>
+        </div>
       )}
       <div className="stack">
       {filtered.map((m) => (
