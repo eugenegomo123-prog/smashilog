@@ -728,6 +728,33 @@ table.ranking th {
   white-space: nowrap;
 }
 
+/* A player's name on the Ranking tab's podium/table, tappable to drill into
+   their session match history (ParticipantSession.tsx's PlayerMatchHistory).
+   Reset to look like plain underlined text, not a button, and its own
+   overflow/ellipsis so a long name still truncates inside .podium-name's
+   fixed width (that only ellipses its own direct text, not a child
+   element's). */
+.name-link {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+.name-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .podium-record {
   font-size: 11px;
   color: var(--muted);

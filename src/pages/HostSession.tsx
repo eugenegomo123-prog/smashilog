@@ -339,6 +339,7 @@ export default function HostSession() {
           session={session}
           players={players.filter((p) => p.approved && p.playingMode !== "chill")}
           history={matchData.history}
+          playerById={playerById}
         />
       )}
       {tab === "history" && <HistoryTab history={matchData.history} playerById={playerById} onChanged={load} />}
@@ -1165,13 +1166,27 @@ function ActualQueueSection({
   );
 }
 
-function RankingTab({ session, players, history }: { session: Session; players: Player[]; history: Match[] }) {
+function RankingTab({
+  session,
+  players,
+  history,
+  playerById,
+}: {
+  session: Session;
+  players: Player[];
+  history: Match[];
+  playerById: (id: number) => Player | undefined;
+}) {
   const sorted = [...players].sort(rankCompare);
   const top3 = sorted.slice(0, 3);
   const rest = sorted.slice(3);
   const awards = session.status === "ended" ? buildAwards(players, history) : null;
   const [shareMsg, setShareMsg] = useState("");
   const [sharing, setSharing] = useState(false);
+  // Which player's name was tapped, if any -- set, this tab shows that
+  // player's matches for *this* session instead of the ranking, with a
+  // "Back" that just clears it (no route change).
+  const [viewingPlayer, setViewingPlayer] = useState<Player | null>(null);
 
   async function handleShare() {
     setSharing(true);
@@ -1188,6 +1203,17 @@ function RankingTab({ session, players, history }: { session: Session; players: 
     }
   }
 
+  if (viewingPlayer) {
+    return (
+      <PlayerMatchHistory
+        player={viewingPlayer}
+        history={history}
+        playerById={playerById}
+        onBack={() => setViewingPlayer(null)}
+      />
+    );
+  }
+
   return (
     <div>
       <div className="row between" style={{ marginBottom: 16 }}>
@@ -1199,7 +1225,7 @@ function RankingTab({ session, players, history }: { session: Session; players: 
 
       {awards && <AwardsPanel awards={awards} />}
 
-      {top3.length > 0 && <Podium top3={top3} />}
+      {top3.length > 0 && <Podium top3={top3} onSelect={setViewingPlayer} />}
       {rest.length > 0 && (
         <div className="table-wrap">
           <table className="ranking">
@@ -1221,7 +1247,10 @@ function RankingTab({ session, players, history }: { session: Session; players: 
                     <td>{i + 4}</td>
                     <td>
                       <span className="rank-row-icon" style={{ color: "var(--muted)" }}><RankAvatar player={p} /></span>{" "}
-                      {p.name} {fireBadge(p.currentStreak)}
+                      <button type="button" className="name-link" onClick={() => setViewingPlayer(p)}>
+                        {p.name}
+                      </button>{" "}
+                      {fireBadge(p.currentStreak)}
                     </td>
                     <td>{p.wins}-{p.losses}</td>
                     <td>{p.gamesPlayed ? Math.round((p.wins / p.gamesPlayed) * 100) : 0}%</td>
@@ -1271,18 +1300,26 @@ function AwardsPanel({ awards }: { awards: NonNullable<ReturnType<typeof buildAw
   );
 }
 
-function Podium({ top3 }: { top3: Player[] }) {
+function Podium({ top3, onSelect }: { top3: Player[]; onSelect: (player: Player) => void }) {
   const [first, second, third] = top3;
   return (
     <div className="podium">
-      <PodiumPlace place={2} player={second} />
-      <PodiumPlace place={1} player={first} />
-      <PodiumPlace place={3} player={third} />
+      <PodiumPlace place={2} player={second} onSelect={onSelect} />
+      <PodiumPlace place={1} player={first} onSelect={onSelect} />
+      <PodiumPlace place={3} player={third} onSelect={onSelect} />
     </div>
   );
 }
 
-function PodiumPlace({ place, player }: { place: 1 | 2 | 3; player?: Player }) {
+function PodiumPlace({
+  place,
+  player,
+  onSelect,
+}: {
+  place: 1 | 2 | 3;
+  player?: Player;
+  onSelect: (player: Player) => void;
+}) {
   if (!player) return <div className="podium-place" />;
   const rankClass = place === 1 ? "gold" : place === 2 ? "silver" : "bronze";
   const winPct = player.gamesPlayed ? Math.round((player.wins / player.gamesPlayed) * 100) : 0;
@@ -1291,10 +1328,77 @@ function PodiumPlace({ place, player }: { place: 1 | 2 | 3; player?: Player }) {
       {place === 1 && <div className="podium-crown">👑</div>}
       <div className="podium-avatar"><RankAvatar player={player} /></div>
       <div className="podium-name">
-        {player.name} {fireBadge(player.currentStreak)}
+        <button type="button" className="name-link" onClick={() => onSelect(player)}>
+          {player.name}
+        </button>{" "}
+        {fireBadge(player.currentStreak)}
       </div>
       <div className="podium-record">{player.wins}-{player.losses} · {winPct}%</div>
       <div className="podium-stand">{place}</div>
+    </div>
+  );
+}
+
+// Shown in place of the ranking (RankingTab's "viewingPlayer") when a name on
+// the podium or table is tapped -- that player's matches from *this* session
+// only. Mirrors ParticipantSession.tsx's component of the same name.
+function PlayerMatchHistory({
+  player,
+  history,
+  playerById,
+  onBack,
+}: {
+  player: Player;
+  history: Match[];
+  playerById: (id: number) => Player | undefined;
+  onBack: () => void;
+}) {
+  const matches = history.filter((m) => [...m.team1, ...m.team2].includes(player.id));
+
+  return (
+    <div>
+      <button
+        type="button"
+        className="back-link"
+        style={{ background: "none", border: "none", padding: 0, cursor: "pointer", font: "inherit" }}
+        onClick={onBack}
+      >
+        ← Back to ranking
+      </button>
+
+      <div className="card row" style={{ gap: 10, marginBottom: 16 }}>
+        <div style={{ width: 40, height: 40, borderRadius: "50%", overflow: "hidden", display: "flex", flexShrink: 0 }}>
+          <RankAvatar player={player} />
+        </div>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 16 }}>{player.name}</div>
+          <div style={{ fontSize: 13, color: "var(--muted)" }}>
+            {player.wins}-{player.losses} this session
+          </div>
+        </div>
+      </div>
+
+      <div className="stack">
+        {matches.map((m) => {
+          const onTeam1 = m.team1.includes(player.id);
+          return (
+            <div key={m.id} className="match-card">
+              <div className="court-label">
+                {m.courtLabel} · {new Date(m.endedAt ?? m.startedAt).toLocaleString()}
+              </div>
+              <div className="team-row" style={{ fontWeight: onTeam1 ? 700 : undefined }}>
+                <span>{m.team1.map((id) => playerById(id)?.name ?? "?").join(" & ")}</span>
+                <strong>{m.score1}</strong>
+              </div>
+              <div className="team-row" style={{ fontWeight: !onTeam1 ? 700 : undefined }}>
+                <span>{m.team2.map((id) => playerById(id)?.name ?? "?").join(" & ")}</span>
+                <strong>{m.score2}</strong>
+              </div>
+            </div>
+          );
+        })}
+        {matches.length === 0 && <div className="empty-state">No completed matches yet.</div>}
+      </div>
     </div>
   );
 }
