@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import type { Db } from "../../db";
 import { matches, players, sessions } from "../../db/schema";
-import { generateSuggestedMatches, type PlayerForMatchmaking } from "./matchmaking";
+import { generateSuggestedMatches, type PairHistory, type PlayerForMatchmaking } from "./matchmaking";
 import { playerIdsUnavailable } from "./stats";
 
 const SUGGESTIONS_PER_REGENERATE = 8;
@@ -19,52 +19,78 @@ function toMatchmakingPlayer(p: typeof players.$inferSelect): PlayerForMatchmaki
   };
 }
 
-// Each player's teammate from their most recently completed match, if any -- used
-// to nudge new suggestions away from immediately repeating the same partnership.
-function buildLastPartnerMap(allMatches: (typeof matches.$inferSelect)[]): Map<number, number> {
-  const completed = allMatches
-    .filter((m) => m.status === "completed" && m.endedAt)
-    .sort(
-      (a, b) =>
-        new Date(b.endedAt as unknown as string).getTime() - new Date(a.endedAt as unknown as string).getTime(),
-    );
-  const map = new Map<number, number>();
-  for (const m of completed) {
-    const team1 = m.team1 as number[];
-    const team2 = m.team2 as number[];
-    if (team1.length === 2) {
-      if (!map.has(team1[0])) map.set(team1[0], team1[1]);
-      if (!map.has(team1[1])) map.set(team1[1], team1[0]);
-    }
-    if (team2.length === 2) {
-      if (!map.has(team2[0])) map.set(team2[0], team2[1]);
-      if (!map.has(team2[1])) map.set(team2[1], team2[0]);
-    }
-  }
-  return map;
+function bumpCount(map: Map<string, number>, key: string) {
+  map.set(key, (map.get(key) ?? 0) + 1);
 }
 
-// Each player's opponents from their most recently completed match, if any --
-// same idea as buildLastPartnerMap above, but for "who did I just play against"
-// rather than "who did I just play with". Used as a smaller, secondary nudge
-// (see REPEAT_OPPONENT_PENALTY in matchmaking.ts).
-function buildLastOpponentMap(allMatches: (typeof matches.$inferSelect)[]): Map<number, number> {
+function pairKeyOfIds(a: number, b: number): string {
+  return a < b ? `${a}-${b}` : `${b}-${a}`;
+}
+
+function groupKeyOfIds(ids: number[]): string {
+  return [...ids].sort((x, y) => x - y).join(",");
+}
+
+// Builds everything the matchmaking module's fairness/variety tiers need from
+// the session's completed-match history: how many times each pair has
+// partnered/opposed each other, each player's single most-recent
+// partner/opponent (a stronger nudge than the plain counts -- see
+// matchmaking.ts), how many times each exact 4-player group has played
+// together, and who was in the single most-recently-completed match ("just
+// played"). All derived from existing completed `matches` rows -- nothing new
+// is stored to produce this (see the project's matchmaking design brief,
+// section 8: "never fabricate missing history... use existing fields and
+// records whenever possible").
+export function buildPairHistory(allMatches: (typeof matches.$inferSelect)[]): PairHistory {
   const completed = allMatches
     .filter((m) => m.status === "completed" && m.endedAt)
     .sort(
       (a, b) =>
         new Date(b.endedAt as unknown as string).getTime() - new Date(a.endedAt as unknown as string).getTime(),
     );
-  const map = new Map<number, number>();
+
+  const partnerCounts = new Map<string, number>();
+  const opponentCounts = new Map<string, number>();
+  const lastPartnerOf = new Map<number, number>();
+  const lastOpponentOf = new Map<number, number>();
+  const groupCounts = new Map<string, number>();
+
   for (const m of completed) {
     const team1 = m.team1 as number[];
     const team2 = m.team2 as number[];
+
+    if (team1.length === 2) {
+      bumpCount(partnerCounts, pairKeyOfIds(team1[0], team1[1]));
+      if (!lastPartnerOf.has(team1[0])) lastPartnerOf.set(team1[0], team1[1]);
+      if (!lastPartnerOf.has(team1[1])) lastPartnerOf.set(team1[1], team1[0]);
+    }
+    if (team2.length === 2) {
+      bumpCount(partnerCounts, pairKeyOfIds(team2[0], team2[1]));
+      if (!lastPartnerOf.has(team2[0])) lastPartnerOf.set(team2[0], team2[1]);
+      if (!lastPartnerOf.has(team2[1])) lastPartnerOf.set(team2[1], team2[0]);
+    }
+
     if (team1.length === 2 && team2.length === 2) {
-      for (const pid of team1) if (!map.has(pid)) map.set(pid, team2[0]);
-      for (const pid of team2) if (!map.has(pid)) map.set(pid, team1[0]);
+      for (const a of team1) {
+        for (const b of team2) {
+          bumpCount(opponentCounts, pairKeyOfIds(a, b));
+        }
+      }
+      for (const pid of team1) if (!lastOpponentOf.has(pid)) lastOpponentOf.set(pid, team2[0]);
+      for (const pid of team2) if (!lastOpponentOf.has(pid)) lastOpponentOf.set(pid, team1[0]);
+
+      bumpCount(groupCounts, groupKeyOfIds([...team1, ...team2]));
     }
   }
-  return map;
+
+  const justPlayedIds = new Set<number>();
+  if (completed.length > 0) {
+    const mostRecent = completed[0];
+    for (const pid of mostRecent.team1 as number[]) justPlayedIds.add(pid);
+    for (const pid of mostRecent.team2 as number[]) justPlayedIds.add(pid);
+  }
+
+  return { partnerCounts, opponentCounts, lastPartnerOf, lastOpponentOf, groupCounts, justPlayedIds };
 }
 
 // Replace the session's suggested matches with a fresh batch computed from whoever
@@ -83,15 +109,8 @@ export async function regenerateQueue(db: Db, sessionId: number) {
     .filter((p) => p.approved && p.status === "active" && !unavailable.has(p.id))
     .map(toMatchmakingPlayer);
 
-  const lastPartnerOf = buildLastPartnerMap(allMatches);
-  const lastOpponentOf = buildLastOpponentMap(allMatches);
-  const suggestions = generateSuggestedMatches(
-    eligible,
-    lastPartnerOf,
-    SUGGESTIONS_PER_REGENERATE,
-    session.courtCount,
-    lastOpponentOf,
-  );
+  const history = buildPairHistory(allMatches);
+  const suggestions = generateSuggestedMatches(eligible, history, SUGGESTIONS_PER_REGENERATE, session.courtCount, Date.now());
 
   await db.delete(matches).where(and(eq(matches.sessionId, sessionId), eq(matches.status, "suggested")));
 

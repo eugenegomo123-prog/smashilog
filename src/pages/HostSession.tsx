@@ -186,21 +186,55 @@ function isStale(match: Match, pool: Player[]): boolean {
   return ids.some((id) => !pool.some((p) => p.id === id));
 }
 
-function suggestionReason(match: Match, pool: Player[]): string {
+// Describes *why* a suggested match looks the way it does -- always derived
+// from this match's own computed properties (its quality grade, the actual
+// levels involved, and real rotation data from the pool), never a generic
+// line that could contradict what was actually calculated. Pairs with
+// `qualityForMatch`'s grade/cost, which comes from the exact same shared
+// scoring module (see that comment above `qualityForMatch`).
+function suggestionReason(match: Match, pool: Player[], quality: MatchQuality | null): string {
   const ids = [...match.team1, ...match.team2];
   const involved = pool.filter((p) => ids.includes(p.id));
-  if (involved.length === 0) return "Balanced pick from the active pool";
+  if (involved.length === 0 || !quality) return "Balanced pick from the active pool.";
+
+  const levels = involved.map((p) => p.level);
+  const allSameLevel = levels.every((l) => l === levels[0]);
+
+  let skillClause: string;
+  if (quality.grade === "excellent") {
+    skillClause = allSameLevel
+      ? `All four players are Level ${levels[0]}, with closely balanced teams`
+      : "Closely matched levels, with balanced teams";
+  } else if (quality.grade === "good") {
+    skillClause = "Players are within adjacent levels, and team strengths are nearly equal";
+  } else if (quality.grade === "fair") {
+    skillClause = "A modest level spread, with teams kept as balanced as the pool allows";
+  } else if (quality.grade === "uneven") {
+    skillClause = "Wider level spread, but this is the closest balanced matchup among the available players";
+  } else {
+    skillClause = "A wide skill gap -- the closest matchup the current pool can offer right now";
+  }
+
+  // Same precedence as the rotation-fairness tier itself (least-played, then
+  // never-played, then most-rested) -- see matchmaking.ts's MatchMetrics.
   const minGames = Math.min(...pool.map((p) => p.gamesPlayed));
-  if (involved.some((p) => p.gamesPlayed === minGames)) return "Includes a least-played player";
-  if (involved.some((p) => !p.lastMatchEndedAt)) return "Includes a player who hasn't played yet";
-  const rested = pool.filter((p) => p.lastMatchEndedAt);
-  if (rested.length > 0) {
-    const oldest = Math.min(...rested.map((p) => new Date(p.lastMatchEndedAt as string).getTime()));
-    if (involved.some((p) => p.lastMatchEndedAt && new Date(p.lastMatchEndedAt).getTime() === oldest)) {
-      return "Includes the most-rested player";
+  let rotationClause: string | null = null;
+  if (involved.some((p) => p.gamesPlayed === minGames)) {
+    rotationClause = "it also prioritizes a least-played player";
+  } else if (involved.some((p) => !p.lastMatchEndedAt)) {
+    rotationClause = "it also prioritizes a player who hasn't played yet";
+  } else {
+    const rested = pool.filter((p) => p.lastMatchEndedAt);
+    if (rested.length > 0) {
+      const oldest = Math.min(...rested.map((p) => new Date(p.lastMatchEndedAt as string).getTime()));
+      if (involved.some((p) => p.lastMatchEndedAt && new Date(p.lastMatchEndedAt).getTime() === oldest)) {
+        rotationClause = "it also prioritizes the most-rested player";
+      }
     }
   }
-  return "Balanced pick from the active pool";
+
+  if (!rotationClause) return `${skillClause}.`;
+  return `${skillClause}. ${rotationClause[0].toUpperCase()}${rotationClause.slice(1)}, while keeping the matchup as skill-compatible as possible.`;
 }
 
 // Quality grade for a 2v2 match, straight from the shared scoring module --
@@ -898,8 +932,8 @@ function SuggestionCard({
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const stale = isStale(match, pool);
-  const reason = stale ? null : suggestionReason(match, pool);
   const quality = qualityForMatch(match, playerById);
+  const reason = stale ? null : suggestionReason(match, pool, quality);
   const flags = matchFlags(match.team1, match.team2, playerById, topRankedIds);
 
   async function addToQueue() {
