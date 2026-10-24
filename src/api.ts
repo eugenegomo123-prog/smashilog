@@ -200,6 +200,16 @@ export const api = {
       averagePointDiff: number;
       highestWinStreak: number;
     }>("/me/stats"),
+  // Private to the signed-in account -- win rate by partner, performance by
+  // opponent level, and head-to-head records. Never exposed on another
+  // player's public profile (see getAccountProfile below), since it names
+  // other players by name.
+  getPartnerStats: () =>
+    request<{
+      partners: { name: string; gamesPlayed: number; wins: number; losses: number }[];
+      opponentLevels: { level: string; gamesPlayed: number; wins: number; losses: number }[];
+      headToHead: { name: string; gamesPlayed: number; wins: number; losses: number }[];
+    }>("/me/partner-stats"),
   getMyRating: () =>
     request<{
       tier: string;

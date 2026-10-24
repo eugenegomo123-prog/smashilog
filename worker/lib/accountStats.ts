@@ -83,6 +83,129 @@ export async function computeOverallStats(db: Db, accountId: number): Promise<Ov
   return { sessionsPlayed, gamesPlayed, wins, losses, pointsFor, pointsAgainst, averagePointDiff, highestWinStreak };
 }
 
+export interface PartnerRecord {
+  name: string;
+  gamesPlayed: number;
+  wins: number;
+  losses: number;
+}
+
+export interface OpponentLevelRecord {
+  level: string; // A-E
+  gamesPlayed: number;
+  wins: number;
+  losses: number;
+}
+
+export interface HeadToHeadRecord {
+  name: string;
+  gamesPlayed: number;
+  wins: number;
+  losses: number;
+}
+
+export interface PartnerStats {
+  // Every teammate this account has shared a completed doubles match with,
+  // across every session, most games played together first.
+  partners: PartnerRecord[];
+  // Performance grouped by each opponent's own skill level (not the opposing
+  // team's average) -- a match against a mixed-level team (e.g. a Level B
+  // paired with a Level D) counts once toward each of their level buckets, so
+  // a level only appears here once this account has actually faced it. In A-E
+  // order, not by games played.
+  opponentLevels: OpponentLevelRecord[];
+  // Every opponent this account has faced in a completed match, across every
+  // session, most games played first.
+  headToHead: HeadToHeadRecord[];
+}
+
+// Partners/opponents are identified by their session player row's `name` --
+// the same identity the History tab's teammateNames/opponentNames already
+// use (see computeSessionDetail below). That's the only persistent-enough
+// identifier a guest player ever has (no login, no cross-session id), so two
+// different guests who happen to share a name across sessions are merged
+// here, same known tradeoff as everywhere else names are shown in this app.
+//
+// This is deliberately a *separate* function from computeOverallStats, not an
+// extension of it: computeOverallStats also backs the public
+// GET /api/accounts/:id/profile endpoint (any other logged-in player can view
+// it), and a breakdown of exactly who you've partnered/faced and how you did
+// against them is more personal than an aggregate win-loss record -- so this
+// only gets its own private /api/me/partner-stats endpoint, for the account
+// holder alone.
+export async function computePartnerStats(db: Db, accountId: number): Promise<PartnerStats> {
+  const myRows = await db.select().from(players).where(eq(players.accountId, accountId));
+  if (myRows.length === 0) return { partners: [], opponentLevels: [], headToHead: [] };
+
+  const sessionIds = [...new Set(myRows.map((p) => p.sessionId))];
+  const myIdBySession = new Map(myRows.map((p) => [p.sessionId, p.id]));
+
+  const sessionPlayers = await db.select().from(players).where(inArray(players.sessionId, sessionIds));
+  const playerById = new Map(sessionPlayers.map((p) => [p.id, p]));
+
+  const allMatches = await db.select().from(matches).where(inArray(matches.sessionId, sessionIds));
+  const completed = allMatches.filter((m) => m.status === "completed" && m.endedAt);
+
+  const partnersByName = new Map<string, PartnerRecord>();
+  const opponentsByLevel = new Map<string, OpponentLevelRecord>();
+  const headToHeadByName = new Map<string, HeadToHeadRecord>();
+
+  for (const m of completed) {
+    const myId = myIdBySession.get(m.sessionId);
+    if (myId == null) continue;
+    const team1 = m.team1 as number[];
+    const team2 = m.team2 as number[];
+    const onTeam1 = team1.includes(myId);
+    const onTeam2 = team2.includes(myId);
+    if (!onTeam1 && !onTeam2) continue;
+
+    const myTeam = onTeam1 ? team1 : team2;
+    const oppTeam = onTeam1 ? team2 : team1;
+    const myScore = onTeam1 ? m.score1 ?? 0 : m.score2 ?? 0;
+    const opponentScore = onTeam1 ? m.score2 ?? 0 : m.score1 ?? 0;
+    const won = myScore > opponentScore;
+
+    const partnerId = myTeam.find((id) => id !== myId);
+    if (partnerId != null) {
+      const name = playerById.get(partnerId)?.name ?? "?";
+      const rec = partnersByName.get(name) ?? { name, gamesPlayed: 0, wins: 0, losses: 0 };
+      rec.gamesPlayed += 1;
+      if (won) rec.wins += 1;
+      else rec.losses += 1;
+      partnersByName.set(name, rec);
+    }
+
+    for (const oppId of oppTeam) {
+      const opp = playerById.get(oppId);
+      const name = opp?.name ?? "?";
+      const h2h = headToHeadByName.get(name) ?? { name, gamesPlayed: 0, wins: 0, losses: 0 };
+      h2h.gamesPlayed += 1;
+      if (won) h2h.wins += 1;
+      else h2h.losses += 1;
+      headToHeadByName.set(name, h2h);
+
+      const level = opp?.level ?? "C";
+      const lvlRec = opponentsByLevel.get(level) ?? { level, gamesPlayed: 0, wins: 0, losses: 0 };
+      lvlRec.gamesPlayed += 1;
+      if (won) lvlRec.wins += 1;
+      else lvlRec.losses += 1;
+      opponentsByLevel.set(level, lvlRec);
+    }
+  }
+
+  const partners = [...partnersByName.values()].sort(
+    (a, b) => b.gamesPlayed - a.gamesPlayed || a.name.localeCompare(b.name),
+  );
+  const opponentLevels = LEVELS.map((level) => opponentsByLevel.get(level)).filter(
+    (r): r is OpponentLevelRecord => !!r,
+  );
+  const headToHead = [...headToHeadByName.values()].sort(
+    (a, b) => b.gamesPlayed - a.gamesPlayed || a.name.localeCompare(b.name),
+  );
+
+  return { partners, opponentLevels, headToHead };
+}
+
 export interface AccountRankEntry {
   accountId: number;
   username: string;

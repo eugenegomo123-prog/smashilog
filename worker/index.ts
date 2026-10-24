@@ -8,6 +8,7 @@ import {
   computeAllTimeRanking,
   computeMonthRanking,
   computeOverallStats,
+  computePartnerStats,
   computeSessionDetail,
   computeSessionHistory,
   rankAccounts,
@@ -237,6 +238,19 @@ app.get("/api/me/stats", async (c) => {
   if (!accountId) return c.text("Unauthorized", 401);
   const db = getDb(c.env.DATABASE_URL);
   const stats = await computeOverallStats(db, accountId);
+  return c.json(stats);
+});
+
+// GET /api/me/partner-stats -- win rate by partner, performance by opponent
+// level, and head-to-head records. Private to the account holder: unlike
+// computeOverallStats, this is never exposed through the public
+// /api/accounts/:id/profile endpoint, since it names other players by name.
+app.get("/api/me/partner-stats", async (c) => {
+  const secret = playerAuthSecret(c.env);
+  const accountId = secret ? await requirePlayer(c.req.raw, secret) : null;
+  if (!accountId) return c.text("Unauthorized", 401);
+  const db = getDb(c.env.DATABASE_URL);
+  const stats = await computePartnerStats(db, accountId);
   return c.json(stats);
 });
 
