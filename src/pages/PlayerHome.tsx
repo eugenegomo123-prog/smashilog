@@ -341,8 +341,6 @@ function StatsTab() {
 
       {stats && <OverallRecordCard stats={stats} />}
 
-      {partnerStats && <PartnerStatsPreview stats={partnerStats} />}
-
       <h3 style={{ fontSize: 15, color: "var(--muted)" }}>Join a session</h3>
       <div className="stack">
         {sessionsList?.map((s) => (
@@ -364,6 +362,18 @@ function StatsTab() {
         ))}
         {sessionsList?.length === 0 && <div className="empty-state">No active sessions right now.</div>}
       </div>
+
+      {partnerStats && (
+        <>
+          <div>
+            <h3 style={{ fontSize: 15, color: "var(--muted)", marginBottom: 2 }}>Partner stats</h3>
+            <div className="subtitle" style={{ margin: 0 }}>
+              A summary of how you play with and against other members.
+            </div>
+          </div>
+          <PartnerStatsPreview stats={partnerStats} />
+        </>
+      )}
     </div>
   );
 }
