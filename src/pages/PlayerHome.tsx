@@ -4,6 +4,7 @@ import { api, TIER_BADGE_IMAGE, rankScore, LEVELS, LEVEL_ICON, LEVEL_LABEL, type
 import { compressImageFile } from "../imageUpload";
 import { AccountAvatar } from "../accountAvatar";
 import { OverallRecordCard, type OverallRecordStats } from "../overallRecord";
+import { PartnerStatsPreview, type PartnerStatsData } from "../partnerStats";
 
 type Tab = "stats" | "rank" | "ranking" | "history" | "account";
 const TABS: Tab[] = ["stats", "rank", "ranking", "history", "account"];
@@ -306,7 +307,7 @@ function StatsTab() {
   const navigate = useNavigate();
   const [me, setMe] = useState<MeInfo | null>(null);
   const [stats, setStats] = useState<OverallRecordStats | null>(null);
-  const [partnerStats, setPartnerStats] = useState<Awaited<ReturnType<typeof api.getPartnerStats>> | null>(null);
+  const [partnerStats, setPartnerStats] = useState<PartnerStatsData | null>(null);
   const [sessionsList, setSessionsList] = useState<JoinableSession[] | null>(null);
 
   useEffect(() => {
@@ -340,7 +341,7 @@ function StatsTab() {
 
       {stats && <OverallRecordCard stats={stats} />}
 
-      {partnerStats && <PartnerStatsSection stats={partnerStats} />}
+      {partnerStats && <PartnerStatsPreview stats={partnerStats} />}
 
       <h3 style={{ fontSize: 15, color: "var(--muted)" }}>Join a session</h3>
       <div className="stack">
@@ -363,124 +364,6 @@ function StatsTab() {
         ))}
         {sessionsList?.length === 0 && <div className="empty-state">No active sessions right now.</div>}
       </div>
-    </div>
-  );
-}
-
-function winRatePct(wins: number, gamesPlayed: number): number {
-  return gamesPlayed > 0 ? Math.round((wins / gamesPlayed) * 100) : 0;
-}
-
-// Below this many games together, one lucky or unlucky session can swing a
-// partner's win rate wildly, so "most successful" only picks among partners
-// who've cleared this bar -- falling back to the full list only if nobody
-// has (e.g. every partnership is still brand new).
-const MIN_GAMES_FOR_MOST_SUCCESSFUL_PARTNER = 3;
-
-function mostSuccessfulPartner<T extends { name: string; wins: number; gamesPlayed: number }>(
-  partners: T[],
-): T | null {
-  if (partners.length === 0) return null;
-  const qualified = partners.filter((p) => p.gamesPlayed >= MIN_GAMES_FOR_MOST_SUCCESSFUL_PARTNER);
-  const pool = qualified.length > 0 ? qualified : partners;
-  return [...pool].sort((a, b) => {
-    const pctDiff = winRatePct(b.wins, b.gamesPlayed) - winRatePct(a.wins, a.gamesPlayed);
-    if (pctDiff !== 0) return pctDiff;
-    if (b.gamesPlayed !== a.gamesPlayed) return b.gamesPlayed - a.gamesPlayed;
-    return a.name.localeCompare(b.name);
-  })[0];
-}
-
-// A single "name · W-L in N games" row with a win-rate figure on the right,
-// reused for the three partner/opponent/head-to-head lists below -- same
-// shape as a row in HistoryTab, just keyed by name/level instead of session.
-function RecordRow({
-  label,
-  wins,
-  losses,
-  gamesPlayed,
-}: {
-  label: string;
-  wins: number;
-  losses: number;
-  gamesPlayed: number;
-}) {
-  const pct = winRatePct(wins, gamesPlayed);
-  return (
-    <div className="card row between">
-      <div>
-        <div style={{ fontWeight: 600 }}>{label}</div>
-        <div style={{ fontSize: 12, color: "var(--muted)" }}>
-          {wins}-{losses} · {gamesPlayed} game{gamesPlayed === 1 ? "" : "s"}
-        </div>
-      </div>
-      <div style={{ fontWeight: 700, color: pct >= 50 ? "var(--good)" : "var(--bad)" }}>{pct}%</div>
-    </div>
-  );
-}
-
-// The Stats tab's partner/opponent breakdown -- win rate by partner, a
-// highlighted "most successful partner", performance against each opponent
-// skill level, and head-to-head records against every opponent faced.
-// Private to the signed-in account (see getPartnerStats in src/api.ts for
-// why this isn't folded into the public OverallRecordCard data).
-function PartnerStatsSection({ stats }: { stats: Awaited<ReturnType<typeof api.getPartnerStats>> }) {
-  const { partners, opponentLevels, headToHead } = stats;
-  if (partners.length === 0 && opponentLevels.length === 0 && headToHead.length === 0) return null;
-
-  const topPartner = mostSuccessfulPartner(partners);
-
-  return (
-    <div className="stack">
-      {topPartner && (
-        <div className="card">
-          <div style={{ fontSize: 13, color: "var(--muted)" }}>Most successful partner</div>
-          <div style={{ fontWeight: 700, fontSize: 18, marginTop: 2 }}>{topPartner.name}</div>
-          <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 2 }}>
-            {winRatePct(topPartner.wins, topPartner.gamesPlayed)}% win rate · {topPartner.wins}-{topPartner.losses}{" "}
-            together in {topPartner.gamesPlayed} game{topPartner.gamesPlayed === 1 ? "" : "s"}
-          </div>
-        </div>
-      )}
-
-      {partners.length > 0 && (
-        <div>
-          <h3 style={{ fontSize: 15, color: "var(--muted)" }}>Win rate by partner</h3>
-          <div className="stack">
-            {partners.map((p) => (
-              <RecordRow key={p.name} label={p.name} wins={p.wins} losses={p.losses} gamesPlayed={p.gamesPlayed} />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {opponentLevels.length > 0 && (
-        <div>
-          <h3 style={{ fontSize: 15, color: "var(--muted)" }}>Performance vs. opponent level</h3>
-          <div className="stack">
-            {opponentLevels.map((o) => (
-              <RecordRow
-                key={o.level}
-                label={`${LEVEL_ICON[o.level as Level]} ${o.level} · ${LEVEL_LABEL[o.level as Level]}`}
-                wins={o.wins}
-                losses={o.losses}
-                gamesPlayed={o.gamesPlayed}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {headToHead.length > 0 && (
-        <div>
-          <h3 style={{ fontSize: 15, color: "var(--muted)" }}>Head-to-head records</h3>
-          <div className="stack">
-            {headToHead.map((h) => (
-              <RecordRow key={h.name} label={h.name} wins={h.wins} losses={h.losses} gamesPlayed={h.gamesPlayed} />
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
