@@ -193,15 +193,23 @@ export async function computePartnerStats(db: Db, accountId: number): Promise<Pa
     }
   }
 
-  const partners = [...partnersByName.values()].sort(
-    (a, b) => b.gamesPlayed - a.gamesPlayed || a.name.localeCompare(b.name),
-  );
+  // Most games together first, then (for an equal number of games) the
+  // better win rate first, same win%-as-tiebreak convention sessionRankCompare
+  // and rankAccounts already use elsewhere in this file -- name is only the
+  // final tiebreak, to keep the order deterministic when both are equal too.
+  function byGamesThenWinPct(a: { gamesPlayed: number; wins: number; name: string }, b: typeof a) {
+    if (b.gamesPlayed !== a.gamesPlayed) return b.gamesPlayed - a.gamesPlayed;
+    const wpA = a.gamesPlayed ? a.wins / a.gamesPlayed : 0;
+    const wpB = b.gamesPlayed ? b.wins / b.gamesPlayed : 0;
+    if (wpB !== wpA) return wpB - wpA;
+    return a.name.localeCompare(b.name);
+  }
+
+  const partners = [...partnersByName.values()].sort(byGamesThenWinPct);
   const opponentLevels = LEVELS.map((level) => opponentsByLevel.get(level)).filter(
     (r): r is OpponentLevelRecord => !!r,
   );
-  const headToHead = [...headToHeadByName.values()].sort(
-    (a, b) => b.gamesPlayed - a.gamesPlayed || a.name.localeCompare(b.name),
-  );
+  const headToHead = [...headToHeadByName.values()].sort(byGamesThenWinPct);
 
   return { partners, opponentLevels, headToHead };
 }
