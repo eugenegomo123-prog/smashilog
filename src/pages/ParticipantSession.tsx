@@ -264,8 +264,28 @@ export default function ParticipantSession() {
 
   return (
     <div className="screen">
-      <Link className="back-link" to={api.isPlayerLoggedIn() ? "/me" : "/join"}>
-        {api.isPlayerLoggedIn() ? "← My account" : "← All sessions"}
+      {/* While the session is live and we're on any tab other than Dashboard,
+          this just returns to Dashboard instead of leaving the session --
+          otherwise tapping "back" from, say, History dropped you all the way
+          out to the account page, which read as "back" taking you somewhere
+          you didn't navigate from. Once already on Dashboard (or the session
+          has ended, so there's no Dashboard tab to return to), it behaves as
+          a normal back link again. */}
+      <Link
+        className="back-link"
+        to={api.isPlayerLoggedIn() ? "/me" : "/join"}
+        onClick={(e) => {
+          if (!isEnded && tab !== "dashboard") {
+            e.preventDefault();
+            setTab("dashboard");
+          }
+        }}
+      >
+        {!isEnded && tab !== "dashboard"
+          ? "← Dashboard"
+          : api.isPlayerLoggedIn()
+            ? "← My account"
+            : "← All sessions"}
       </Link>
       {statusPopup && <StatusPopup message={statusPopup} onDismiss={() => setStatusPopup(null)} />}
       <div className="brand row between">
