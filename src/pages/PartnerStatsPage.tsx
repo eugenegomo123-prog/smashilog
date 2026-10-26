@@ -41,9 +41,16 @@ export default function PartnerStatsPage() {
           {stats.partners.length > 0 && (
             <div>
               <h3 style={{ fontSize: 15, color: "var(--muted)" }}>Win rate by partner</h3>
-              <div className="stack">
-                {stats.partners.map((p) => (
-                  <RecordRow key={p.name} label={p.name} wins={p.wins} losses={p.losses} gamesPlayed={p.gamesPlayed} />
+              <div className="record-list">
+                {stats.partners.map((p, i) => (
+                  <RecordRow
+                    key={p.name}
+                    rank={i + 1}
+                    label={p.name}
+                    wins={p.wins}
+                    losses={p.losses}
+                    gamesPlayed={p.gamesPlayed}
+                  />
                 ))}
               </div>
             </div>
@@ -54,9 +61,16 @@ export default function PartnerStatsPage() {
           {stats.headToHead.length > 0 && (
             <div>
               <h3 style={{ fontSize: 15, color: "var(--muted)" }}>Head-to-head records</h3>
-              <div className="stack">
-                {stats.headToHead.map((h) => (
-                  <RecordRow key={h.name} label={h.name} wins={h.wins} losses={h.losses} gamesPlayed={h.gamesPlayed} />
+              <div className="record-list">
+                {stats.headToHead.map((h, i) => (
+                  <RecordRow
+                    key={h.name}
+                    rank={i + 1}
+                    label={h.name}
+                    wins={h.wins}
+                    losses={h.losses}
+                    gamesPlayed={h.gamesPlayed}
+                  />
                 ))}
               </div>
             </div>

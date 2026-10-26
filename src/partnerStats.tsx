@@ -56,15 +56,22 @@ export function mostSuccessfulPartner<T extends { name: string; wins: number; ga
   })[0];
 }
 
-// A single "name · W-L in N games" row with a win-rate figure on the right --
-// one row of the Win-rate-by-partner and Head-to-head lists, both in the
-// Stats-tab preview and on the full PartnerStatsPage.
+// A single ranked "#N name · W-L in N games" row with a win-rate figure on
+// the right -- one row of the Win-rate-by-partner and Head-to-head lists,
+// both in the Stats-tab preview (top 3) and the full PartnerStatsPage (every
+// row, numbered the same way). Meant to be rendered inside a .record-list
+// container (below), not .stack -- a plain list of these used to double up
+// as separate .card rows, whose "card + card" margin rule (meant for a
+// vertical stack of full cards) added extra, uneven-looking space between
+// them on top of the stack's own gap.
 export function RecordRow({
+  rank,
   label,
   wins,
   losses,
   gamesPlayed,
 }: {
+  rank: number;
   label: string;
   wins: number;
   losses: number;
@@ -72,14 +79,17 @@ export function RecordRow({
 }) {
   const pct = winRatePct(wins, gamesPlayed);
   return (
-    <div className="card row between">
-      <div>
-        <div style={{ fontWeight: 600 }}>{label}</div>
-        <div style={{ fontSize: 12, color: "var(--muted)" }}>
+    <div className="record-row">
+      <div className="record-rank">{rank}</div>
+      <div className="record-main">
+        <div className="record-name">{label}</div>
+        <div className="record-sub">
           {wins}-{losses} · {gamesPlayed} game{gamesPlayed === 1 ? "" : "s"}
         </div>
       </div>
-      <div style={{ fontWeight: 700, color: pct >= 50 ? "var(--good)" : "var(--bad)" }}>{pct}%</div>
+      <div className="record-pct" style={{ color: pct >= 50 ? "var(--good)" : "var(--bad)" }}>
+        {pct}%
+      </div>
     </div>
   );
 }
@@ -154,9 +164,16 @@ export function PartnerStatsPreview({ stats }: { stats: PartnerStatsData }) {
       {partners.length > 0 && (
         <div>
           <h3 style={{ fontSize: 15, color: "var(--muted)" }}>Win rate by partner</h3>
-          <div className="stack">
-            {partners.slice(0, PREVIEW_COUNT).map((p) => (
-              <RecordRow key={p.name} label={p.name} wins={p.wins} losses={p.losses} gamesPlayed={p.gamesPlayed} />
+          <div className="record-list">
+            {partners.slice(0, PREVIEW_COUNT).map((p, i) => (
+              <RecordRow
+                key={p.name}
+                rank={i + 1}
+                label={p.name}
+                wins={p.wins}
+                losses={p.losses}
+                gamesPlayed={p.gamesPlayed}
+              />
             ))}
           </div>
         </div>
@@ -167,9 +184,16 @@ export function PartnerStatsPreview({ stats }: { stats: PartnerStatsData }) {
       {headToHead.length > 0 && (
         <div>
           <h3 style={{ fontSize: 15, color: "var(--muted)" }}>Head-to-head records</h3>
-          <div className="stack">
-            {headToHead.slice(0, PREVIEW_COUNT).map((h) => (
-              <RecordRow key={h.name} label={h.name} wins={h.wins} losses={h.losses} gamesPlayed={h.gamesPlayed} />
+          <div className="record-list">
+            {headToHead.slice(0, PREVIEW_COUNT).map((h, i) => (
+              <RecordRow
+                key={h.name}
+                rank={i + 1}
+                label={h.name}
+                wins={h.wins}
+                losses={h.losses}
+                gamesPlayed={h.gamesPlayed}
+              />
             ))}
           </div>
         </div>

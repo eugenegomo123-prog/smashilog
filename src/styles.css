@@ -278,6 +278,68 @@ button, input, select {
   text-overflow: ellipsis;
 }
 
+/* Win-rate-by-partner / Head-to-head lists (src/partnerStats.tsx's RecordRow)
+   -- one bordered list with a numbered rank per row and hairline dividers
+   between rows, rather than a .stack of separate .card rows: that read as a
+   pile of loose floating boxes, and ".card + .card"'s margin rule (meant for
+   a vertical stack of full cards) added extra, uneven-looking space on top
+   of the stack's own gap between them. */
+.record-list {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.record-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+}
+
+.record-row + .record-row {
+  border-top: 1px solid var(--border);
+}
+
+.record-rank {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.record-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.record-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.record-sub {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 1px;
+}
+
+.record-pct {
+  flex-shrink: 0;
+  font-weight: 700;
+  font-size: 15px;
+}
+
 /* Rank badge art (src/assets/ranks/*.png) is drawn to glow against a dark
    background -- on this app's light cream cards its fine white/gold
    linework all but disappears, so it always gets this dark showcase card
