@@ -211,7 +211,42 @@ export default function ParticipantSession() {
   }, [sessionId]);
 
   const isEnded = session?.status === "ended";
-  const [tab, setTab] = useState<Tab>(isEnded ? "ranking" : "dashboard");
+  const [tab, setTabState] = useState<Tab>(isEnded ? "ranking" : "dashboard");
+
+  // Tabs here are just local state, not routes -- there's nothing in browser
+  // history for the phone/browser's own "back" action to undo, so by default
+  // it falls straight through to whatever page was open before this session
+  // (e.g. the account page), which reads as "back" taking you somewhere you
+  // never navigated from. To fix that, the first time a tab switch leaves
+  // Dashboard we push one extra history entry; the next physical back press
+  // then has something of ours to consume, and the popstate handler below
+  // turns that into "switch back to Dashboard" instead of letting the browser
+  // navigate the page away. Only one extra entry is ever pushed at a time
+  // (tracked by the ref below), so hopping between Courts/Queue/Ranking/
+  // History doesn't require more than one back press to get to Dashboard.
+  const pushedTabGuardRef = useRef(false);
+
+  function setTab(next: Tab) {
+    if (!isEnded && next !== "dashboard" && !pushedTabGuardRef.current) {
+      window.history.pushState({ smashilogTabGuard: true }, "");
+      pushedTabGuardRef.current = true;
+    }
+    setTabState(next);
+  }
+
+  useEffect(() => {
+    function onPopState() {
+      setTabState((current) => {
+        if (!isEnded && current !== "dashboard") {
+          pushedTabGuardRef.current = false;
+          return "dashboard";
+        }
+        return current;
+      });
+    }
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [isEnded]);
 
   useEffect(() => {
     load();
