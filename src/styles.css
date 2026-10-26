@@ -235,6 +235,49 @@ button, input, select {
   margin-top: 2px;
 }
 
+/* "Performance vs. opponent level" tiles on the Stats tab/Partner Stats page
+   (src/partnerStats.tsx's OpponentLevelStrip) -- same small-tile-grid idea as
+   .overall-record-tile above, just centered and with a column per level
+   faced (the component sets grid-template-columns inline since that count
+   varies, 1-5). */
+.level-stat-grid {
+  display: grid;
+  gap: 6px;
+}
+
+.level-stat-tile {
+  background: var(--panel-2);
+  border-radius: 12px;
+  padding: 10px 4px 8px;
+  text-align: center;
+}
+
+.level-stat-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.level-stat-label {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 3px;
+}
+
+.level-stat-pct {
+  font-size: 15px;
+  font-weight: 700;
+  margin-top: 4px;
+}
+
+.level-stat-games {
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Rank badge art (src/assets/ranks/*.png) is drawn to glow against a dark
    background -- on this app's light cream cards its fine white/gold
    linework all but disappears, so it always gets this dark showcase card

@@ -84,26 +84,34 @@ export function RecordRow({
   );
 }
 
-// Compact horizontal strip of pills, one per opponent level actually faced
-// (A-E, so at most 5) -- unlike partners/headToHead this never needs
-// truncating, so it's shown in full both in the Stats-tab preview and on the
-// full page, just as this one compact block.
+// Compact strip of tiles, one per opponent level actually faced (A-E, so at
+// most 5) -- unlike partners/headToHead this never needs truncating, so it's
+// shown in full both in the Stats-tab preview and on the full page, just as
+// this one compact block. A real CSS grid with a fixed column count (rather
+// than flex-wrap) so every tile is the same size and lines up in one neat
+// row regardless of how many levels have been faced; plain divs rather than
+// .card, both because .card's 16px padding is too heavy for a tile this
+// narrow and because ".card + .card" adds a top margin between adjacent
+// cards that (meant for a vertical stack) misaligned these when they sat
+// side by side in a row.
 export function OpponentLevelStrip({ opponentLevels }: { opponentLevels: OpponentLevelRecord[] }) {
   if (opponentLevels.length === 0) return null;
   return (
     <div>
       <h3 style={{ fontSize: 15, color: "var(--muted)" }}>Performance vs. opponent level</h3>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      <div className="level-stat-grid" style={{ gridTemplateColumns: `repeat(${opponentLevels.length}, 1fr)` }}>
         {opponentLevels.map((o) => {
           const pct = winRatePct(o.wins, o.gamesPlayed);
           return (
-            <div key={o.level} className="card" style={{ flex: "1 1 64px", minWidth: 64, textAlign: "center" }}>
-              <div style={{ fontSize: 18 }} title={LEVEL_LABEL[o.level as Level]}>
+            <div key={o.level} className="level-stat-tile">
+              <div className="level-stat-icon" title={LEVEL_LABEL[o.level as Level]}>
                 {LEVEL_ICON[o.level as Level]}
               </div>
-              <div style={{ fontSize: 12, color: "var(--muted)" }}>{o.level}</div>
-              <div style={{ fontWeight: 700, color: pct >= 50 ? "var(--good)" : "var(--bad)" }}>{pct}%</div>
-              <div style={{ fontSize: 11, color: "var(--muted)" }}>
+              <div className="level-stat-label">{o.level}</div>
+              <div className="level-stat-pct" style={{ color: pct >= 50 ? "var(--good)" : "var(--bad)" }}>
+                {pct}%
+              </div>
+              <div className="level-stat-games">
                 {o.gamesPlayed} game{o.gamesPlayed === 1 ? "" : "s"}
               </div>
             </div>
