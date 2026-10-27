@@ -907,9 +907,13 @@ table.ranking th {
   font-weight: 700;
   font-size: 14px;
   margin-top: 4px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* Unlike .podium-name or .record-name, this is never truncated: who won is
+     the one thing this tile exists to show, several players can tie for an
+     award (joined with ", " or " & "), and names can run long -- so this
+     wraps across as many lines as it needs instead of ellipsizing names
+     away. Tiles in the same grid row still line up fine; they just don't
+     share a height. */
+  overflow-wrap: break-word;
 }
 
 .award-tile-value {
