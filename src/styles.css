@@ -827,7 +827,7 @@ table.ranking th {
 .podium-name {
   font-weight: 700;
   font-size: 13px;
-  max-width: 100px;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -837,8 +837,11 @@ table.ranking th {
    their session match history (ParticipantSession.tsx's PlayerMatchHistory).
    Reset to look like plain underlined text, not a button, and its own
    overflow/ellipsis so a long name still truncates inside .podium-name's
-   fixed width (that only ellipses its own direct text, not a child
-   element's). */
+   width (that only ellipses its own direct text, not a child element's) --
+   itself capped at the actual column width (.podium-place's flex:1 +
+   min-width:0) rather than a fixed px, so it only truncates names that
+   genuinely don't fit instead of always cutting off at the same width
+   regardless of screen size. */
 .name-link {
   background: none;
   border: none;
@@ -860,10 +863,22 @@ table.ranking th {
   outline-offset: 2px;
 }
 
+/* The W-L/win% line under each podium name. Bumped up from 11px and the win%
+   now rendered bold + color-coded (PodiumPlace in ParticipantSession.tsx/
+   HostSession.tsx wraps it in a <strong> with var(--good)/var(--bad)) to
+   match how every other win-rate figure in the app is shown (OverallRecordCard,
+   the partner-stats record list, the opponent-level tiles) -- previously this
+   was the one place a win% stayed flat muted gray, making the podium's actual
+   performance numbers the least noticeable thing on it, despite the big
+   crown/stand decoration around them. */
 .podium-record {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   margin: 2px 0 8px;
+}
+
+.podium-record strong {
+  font-size: 13px;
 }
 
 .podium-stand {

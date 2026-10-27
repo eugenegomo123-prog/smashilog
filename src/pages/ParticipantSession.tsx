@@ -942,7 +942,10 @@ function PodiumPlace({
         </button>{" "}
         {fireBadge(player.currentStreak)}
       </div>
-      <div className="podium-record">{player.wins}-{player.losses} · {winPct}%</div>
+      <div className="podium-record">
+        {player.wins}-{player.losses} ·{" "}
+        <strong style={{ color: winPct >= 50 ? "var(--good)" : "var(--bad)" }}>{winPct}%</strong>
+      </div>
       <div className="podium-stand">{place}</div>
     </div>
   );
