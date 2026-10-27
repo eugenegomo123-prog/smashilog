@@ -1303,30 +1303,46 @@ function RankingTab({
   );
 }
 
+// Each award is its own tile (name prominent, the label and the stat it was
+// won with as small captions above/below) in a 2-column grid -- same tile
+// idea as OverallRecordCard's 2x2 grid, rather than a plain settings-style
+// list of label/value rows, which read flatter than an "awards" section
+// probably should.
 function AwardsPanel({ awards }: { awards: NonNullable<ReturnType<typeof buildAwards>> }) {
   const diffVal = (awards.bestDiff.pointsFor - awards.bestDiff.pointsAgainst) / awards.bestDiff.gamesPlayed;
   return (
     <div className="card" style={{ marginBottom: 16 }}>
       <h3 style={{ fontSize: 15, color: "var(--accent-2)", marginTop: 0 }}>🏆 Session awards</h3>
-      <div className="stack">
-        <div className="row between">
-          <span>📈 Best point diff</span>
-          <strong>{awards.bestDiff.name} ({diffVal > 0 ? "+" : ""}{diffVal.toFixed(1)})</strong>
+      <div className="awards-grid">
+        <div className="award-tile">
+          <div className="award-tile-label">📈 Best point diff</div>
+          <div className="award-tile-winner">{awards.bestDiff.name}</div>
+          <div className="award-tile-value">
+            {diffVal > 0 ? "+" : ""}
+            {diffVal.toFixed(1)} diff
+          </div>
         </div>
-        <div className="row between">
-          <span>🎽 Most games played</span>
-          <strong>{awards.mostGames.map((p) => p.name).join(", ")} ({awards.mostGames[0].gamesPlayed})</strong>
+        <div className="award-tile">
+          <div className="award-tile-label">🎽 Most games played</div>
+          <div className="award-tile-winner">{awards.mostGames.map((p) => p.name).join(", ")}</div>
+          <div className="award-tile-value">
+            {awards.mostGames[0].gamesPlayed} game{awards.mostGames[0].gamesPlayed === 1 ? "" : "s"}
+          </div>
         </div>
         {awards.streakPlayers.length > 0 && (
-          <div className="row between">
-            <span>🔥 Longest win streak</span>
-            <strong>{awards.streakPlayers.map((p) => p.name).join(", ")} ({awards.streakValue})</strong>
+          <div className="award-tile">
+            <div className="award-tile-label">🔥 Longest win streak</div>
+            <div className="award-tile-winner">{awards.streakPlayers.map((p) => p.name).join(", ")}</div>
+            <div className="award-tile-value">
+              {awards.streakValue} win{awards.streakValue === 1 ? "" : "s"}
+            </div>
           </div>
         )}
         {awards.bestPair && (
-          <div className="row between">
-            <span>🤝 Best pair</span>
-            <strong>{awards.bestPair.names.join(" & ")} (+{awards.bestPair.diff})</strong>
+          <div className="award-tile">
+            <div className="award-tile-label">🤝 Best pair</div>
+            <div className="award-tile-winner">{awards.bestPair.names.join(" & ")}</div>
+            <div className="award-tile-value">+{awards.bestPair.diff} diff</div>
           </div>
         )}
       </div>
