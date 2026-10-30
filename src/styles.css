@@ -863,6 +863,24 @@ table.ranking th {
   outline-offset: 2px;
 }
 
+/* The tier badge + name caption under a podium name -- only used by
+   PlayerHome.tsx's account-level Overall Ranking podium (RankPodiumPlace),
+   since the session-level podium has no tier/division concept. Sits between
+   .podium-name and .podium-record. */
+.podium-tier {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* The W-L/win% line under each podium name. Bumped up from 11px and the win%
    now rendered bold + color-coded (PodiumPlace in ParticipantSession.tsx/
    HostSession.tsx wraps it in a <strong> with var(--good)/var(--bad)) to

@@ -177,6 +177,14 @@ function RankingTab() {
   // Already sorted by rank first (server-side, see rankAccounts), so this
   // filter is a pure narrow-down -- no re-sort needed.
   const visible = divisionFilter ? entries?.filter((e) => e.tier === divisionFilter) ?? null : entries;
+  // Top 3 of whatever's currently visible get the podium treatment below --
+  // of the filtered tier when one's picked (so "top 3 Fledgling", say, is
+  // the top 3 Fledgling players, same list the "#" column already renumbers
+  // from 1 within), of the full leaderboard otherwise. The rest stay in the
+  // plain table, same as ParticipantSession.tsx's session-level Ranking tab
+  // splits its own top3/rest.
+  const top3 = visible?.slice(0, 3) ?? [];
+  const rest = visible?.slice(3) ?? [];
 
   return (
     <div>
@@ -241,7 +249,8 @@ function RankingTab() {
           </button>
         </div>
       )}
-      {visible && visible.length > 0 && (
+      {top3.length > 0 && <RankPodium top3={top3} me={me} />}
+      {rest.length > 0 && (
         <div className="table-wrap">
           <table className="ranking">
             <thead>
@@ -255,14 +264,14 @@ function RankingTab() {
               </tr>
             </thead>
             <tbody>
-              {visible.map((e, i) => {
+              {rest.map((e, i) => {
                 const winPct = e.gamesPlayed ? Math.round((e.wins / e.gamesPlayed) * 100) : 0;
                 const avgDiff = e.gamesPlayed ? (e.pointsFor - e.pointsAgainst) / e.gamesPlayed : 0;
                 const isMe = e.username === me;
                 const badgeSrc = TIER_BADGE_IMAGE[e.tier] ?? TIER_BADGE_IMAGE.Fledgling;
                 return (
                   <tr key={e.accountId} style={isMe ? { background: "var(--panel-2)", fontWeight: 700 } : undefined}>
-                    <td>{i + 1}</td>
+                    <td>{i + 4}</td>
                     <td>
                       <span className="rank-row-icon" style={{ marginRight: 5 }}>
                         <AccountAvatar username={e.username} accountId={e.accountId} pictureUpdatedAt={e.pictureUpdatedAt} size={18} />
@@ -299,6 +308,81 @@ function RankingTab() {
           </table>
         </div>
       )}
+    </div>
+  );
+}
+
+// The account-level Overall Ranking tab's own top-3 podium -- same visual
+// language as ParticipantSession.tsx/HostSession.tsx's session-level Podium/
+// PodiumPlace (reuses the .podium/.podium-place/.podium-crown/.podium-stand
+// CSS as-is), but a separate component rather than a shared one: this tab
+// works from AccountRankEntry rows (username/accountId/tier/division/mmr),
+// not session Player rows (id/name/level/currentStreak), and uses
+// AccountAvatar (an account id + picture timestamp) instead of RankAvatar (a
+// session Player, falling back to its level icon). Tapping a name here
+// navigates to that account's public profile page, since there's no
+// in-session match history to drill into at this scope.
+function RankPodium({ top3, me }: { top3: AccountRankEntry[]; me: string | null }) {
+  const [first, second, third] = top3;
+  return (
+    <div className="podium" style={{ marginBottom: 16 }}>
+      <RankPodiumPlace place={2} entry={second} me={me} />
+      <RankPodiumPlace place={1} entry={first} me={me} />
+      <RankPodiumPlace place={3} entry={third} me={me} />
+    </div>
+  );
+}
+
+function RankPodiumPlace({
+  place,
+  entry,
+  me,
+}: {
+  place: 1 | 2 | 3;
+  entry?: AccountRankEntry;
+  me: string | null;
+}) {
+  if (!entry) return <div className="podium-place" />;
+  const rankClass = place === 1 ? "gold" : place === 2 ? "silver" : "bronze";
+  const winPct = entry.gamesPlayed ? Math.round((entry.wins / entry.gamesPlayed) * 100) : 0;
+  const badgeSrc = TIER_BADGE_IMAGE[entry.tier] ?? TIER_BADGE_IMAGE.Fledgling;
+  return (
+    <div className={`podium-place ${rankClass}`}>
+      {place === 1 && <div className="podium-crown">👑</div>}
+      {/* AccountAvatar is already a fully self-contained circular avatar
+          (its own size/background/initials-fallback via the .avatar class),
+          unlike RankAvatar which has no size opinion of its own and relies
+          entirely on whatever box it's placed in -- so here, sized to
+          exactly fill .podium-avatar's own width/height, it covers that
+          wrapper's background gradient completely rather than letting it
+          peek through behind a transparent icon. The border ring and (for
+          gold) the outer glow still render around it either way, since
+          those paint outside the avatar's own box, so gold/silver/bronze
+          stays visually distinct even without the gradient showing. */}
+      <div className="podium-avatar">
+        <AccountAvatar
+          username={entry.username}
+          accountId={entry.accountId}
+          pictureUpdatedAt={entry.pictureUpdatedAt}
+          size={place === 1 ? 62 : 50}
+        />
+      </div>
+      <div className="podium-name">
+        <Link className="name-link" to={`/player/${entry.accountId}`}>
+          {entry.username}
+        </Link>
+      </div>
+      <div className="podium-tier">
+        <img src={badgeSrc} alt="" style={{ width: 14, height: 14, verticalAlign: "middle", marginRight: 3 }} />
+        {entry.tier}
+        {entry.division ? ` ${entry.division}` : ""}
+        {entry.username === me ? " · you" : ""}
+      </div>
+      <div className="podium-record">
+        {entry.wins}-{entry.losses} ·{" "}
+        <strong style={{ color: winPct >= 50 ? "var(--good)" : "var(--bad)" }}>{winPct}%</strong>
+      </div>
+      <div className="podium-stand">{place}</div>
     </div>
   );
 }
