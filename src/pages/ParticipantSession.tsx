@@ -308,7 +308,7 @@ export default function ParticipantSession() {
           a normal back link again. */}
       <Link
         className="back-link"
-        to={api.isPlayerLoggedIn() ? "/me" : "/join"}
+        to={api.isPlayerLoggedIn() ? (isEnded ? "/me?tab=history" : "/me") : "/join"}
         onClick={(e) => {
           if (!isEnded && tab !== "dashboard") {
             e.preventDefault();
@@ -319,7 +319,9 @@ export default function ParticipantSession() {
         {!isEnded && tab !== "dashboard"
           ? "← Dashboard"
           : api.isPlayerLoggedIn()
-            ? "← My account"
+            ? isEnded
+              ? "← My history"
+              : "← My account"
             : "← All sessions"}
       </Link>
       {statusPopup && <StatusPopup message={statusPopup} onDismiss={() => setStatusPopup(null)} />}
@@ -793,8 +795,7 @@ function RankingTab({
   const [sharing, setSharing] = useState(false);
   // Which player's name was tapped, if any -- set, this tab shows that
   // player's matches for *this* session instead of the ranking, with a
-  // "Back" that just clears it (same drill-down-in-place pattern as
-  // PlayerHome.tsx's HistoryTab/SessionDetailView, no route change).
+  // "Back" that just clears it (a drill-down in place, no route change).
   const [viewingPlayer, setViewingPlayer] = useState<Player | null>(null);
 
   async function handleShare() {

@@ -647,15 +647,19 @@ function RankTab() {
   );
 }
 
+// Each row opens the session's own page (/session/:id) -- for an ended
+// session that's the same view a guest gets: Session awards, the podium,
+// the full standings, and every match (with a "My matches" filter for a
+// logged-in player). Used to be a separate, plainer in-place detail view
+// that only showed a bare standings table and the player's own matches.
 function HistoryTab() {
+  const navigate = useNavigate();
   const [history, setHistory] = useState<Awaited<ReturnType<typeof api.getMyHistory>> | null>(null);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
 
   useEffect(() => {
     api.getMyHistory().then(setHistory);
   }, []);
 
-  if (selectedId) return <SessionDetailView sessionId={selectedId} onBack={() => setSelectedId(null)} />;
   if (history === null) return <div className="empty-state">Loading…</div>;
   if (history.length === 0) return <div className="empty-state">No past sessions yet.</div>;
 
@@ -666,7 +670,7 @@ function HistoryTab() {
           key={h.sessionId}
           className="card row between"
           style={{ cursor: "pointer" }}
-          onClick={() => setSelectedId(h.sessionId)}
+          onClick={() => navigate(`/session/${h.sessionId}`)}
         >
           <div>
             <div style={{ fontWeight: 600 }}>{h.sessionName}</div>
@@ -680,105 +684,6 @@ function HistoryTab() {
           </div>
         </div>
       ))}
-    </div>
-  );
-}
-
-function SessionDetailView({ sessionId, onBack }: { sessionId: number; onBack: () => void }) {
-  const [detail, setDetail] = useState<Awaited<ReturnType<typeof api.getSessionDetail>> | null>(null);
-
-  useEffect(() => {
-    setDetail(null);
-    api.getSessionDetail(sessionId).then(setDetail);
-  }, [sessionId]);
-
-  if (!detail) return <div className="empty-state">Loading…</div>;
-
-  return (
-    <div>
-      <button
-        className="back-link"
-        style={{ background: "none", border: "none", padding: 0, cursor: "pointer", font: "inherit" }}
-        onClick={onBack}
-      >
-        ← All sessions
-      </button>
-      <h3 style={{ fontSize: 18, marginTop: 8, marginBottom: 2 }}>{detail.session.name}</h3>
-      <p className="subtitle">
-        {new Date(detail.session.endedAt ?? detail.session.createdAt).toLocaleDateString()} ·{" "}
-        {detail.session.status === "ended" ? "Ended" : "Active"}
-      </p>
-
-      <div className="card">
-        <div className="row between" style={{ marginBottom: 6 }}>
-          <span>Your record</span>
-          <strong>{detail.myStats.wins}-{detail.myStats.losses}</strong>
-        </div>
-        <div className="row between" style={{ marginBottom: 6 }}>
-          <span>Points for / against</span>
-          <strong>{detail.myStats.pointsFor} / {detail.myStats.pointsAgainst}</strong>
-        </div>
-        <div className="row between">
-          <span>Rank</span>
-          <strong>{detail.myStats.rank > 0 ? `#${detail.myStats.rank} of ${detail.myStats.totalRanked}` : "Unranked"}</strong>
-        </div>
-      </div>
-
-      <div className="row between" style={{ marginTop: 20, alignItems: "baseline" }}>
-        <h3 style={{ fontSize: 15, color: "var(--muted)", margin: 0 }}>Final standings</h3>
-        <button
-          className="btn small"
-          onClick={() =>
-            downloadCsv(
-              `smashilog-${detail.session.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-standings.csv`,
-              ["Rank", "Player", "Wins", "Losses"],
-              detail.ranking.map((p, i) => [i + 1, p.name, p.wins, p.losses]),
-            )
-          }
-        >
-          ⬇ CSV
-        </button>
-      </div>
-      <div className="table-wrap">
-        <table className="ranking">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Player</th>
-              <th>W-L</th>
-            </tr>
-          </thead>
-          <tbody>
-            {detail.ranking.map((p, i) => (
-              <tr key={i}>
-                <td>{i + 1}</td>
-                <td>{p.name}</td>
-                <td>{p.wins}-{p.losses}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <h3 style={{ fontSize: 15, color: "var(--muted)", marginTop: 20 }}>Your matches</h3>
-      <div className="stack">
-        {detail.matches.map((m) => (
-          <div key={m.id} className="match-card">
-            <div className="court-label">
-              {m.courtLabel} · {m.endedAt ? new Date(m.endedAt).toLocaleString() : ""}
-            </div>
-            <div className="team-row">
-              <span>You{m.teammateNames.length ? ` & ${m.teammateNames.join(" & ")}` : ""}</span>
-              <strong style={{ color: m.won ? "var(--good)" : "var(--bad)" }}>{m.myScore}</strong>
-            </div>
-            <div className="team-row">
-              <span>{m.opponentNames.join(" & ")}</span>
-              <strong>{m.opponentScore}</strong>
-            </div>
-          </div>
-        ))}
-        {detail.matches.length === 0 && <div className="empty-state">No completed matches in this session.</div>}
-      </div>
     </div>
   );
 }
