@@ -17,6 +17,7 @@ interface MeInfo {
   activeParticipation: { sessionId: number; sessionName: string; approved: boolean } | null;
   accountId: number;
   pictureUpdatedAt: string | null;
+  usernameNextChangeAt: string | null;
 }
 
 interface JoinableSession {
@@ -52,6 +53,10 @@ export default function PlayerHome() {
   const [tab, setTabState] = useState<Tab>(
     requestedTab && (TABS as string[]).includes(requestedTab) ? (requestedTab as Tab) : "stats",
   );
+  // The username itself lives in browser storage (see api.playerUsername), which
+  // React can't watch -- so after a rename in the Account tab this is bumped
+  // just to make the "Hi, ..." greeting below re-read it.
+  const [, setNameVersion] = useState(0);
 
   function setTab(next: Tab) {
     setTabState(next);
@@ -77,7 +82,7 @@ export default function PlayerHome() {
       {tab === "rank" && <RankTab />}
       {tab === "ranking" && <RankingTab />}
       {tab === "history" && <HistoryTab />}
-      {tab === "account" && <AccountTab />}
+      {tab === "account" && <AccountTab onRenamed={() => setNameVersion((v) => v + 1)} />}
 
       <nav className="tabs">
         <button className={tab === "stats" ? "active" : ""} onClick={() => setTab("stats")}>📊 Stats</button>
@@ -690,7 +695,7 @@ function HistoryTab() {
   );
 }
 
-function AccountTab() {
+function AccountTab({ onRenamed }: { onRenamed: () => void }) {
   const navigate = useNavigate();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -701,6 +706,12 @@ function AccountTab() {
   const [deletePassword, setDeletePassword] = useState("");
   const [deleteError, setDeleteError] = useState("");
   const [deleting, setDeleting] = useState(false);
+
+  const [newUsername, setNewUsername] = useState("");
+  const [usernamePassword, setUsernamePassword] = useState("");
+  const [usernameError, setUsernameError] = useState("");
+  const [usernameSuccess, setUsernameSuccess] = useState("");
+  const [usernameSaving, setUsernameSaving] = useState(false);
 
   const [level, setLevel] = useState<Level | null>(null);
   const [levelSaving, setLevelSaving] = useState(false);
@@ -789,6 +800,36 @@ function AccountTab() {
     }
   }
 
+  async function submitUsername(e: React.FormEvent) {
+    e.preventDefault();
+    setUsernameError("");
+    setUsernameSuccess("");
+    const wanted = newUsername.trim();
+    if (
+      !(await confirmDialog(
+        `Change your username to "${wanted}"? It will change everywhere, including your past sessions, ` +
+          "and you won't be able to change it again for 30 days.",
+        { confirmLabel: "Change it" },
+      ))
+    ) {
+      return;
+    }
+    setUsernameSaving(true);
+    try {
+      const result = await api.changeUsername(usernamePassword, wanted);
+      setNewUsername("");
+      setUsernamePassword("");
+      setUsernameSuccess(`Username changed to ${result.username}.`);
+      onRenamed();
+      // Refresh the account info so the 30-day wait shows up right away.
+      reloadMe().catch(() => {});
+    } catch (err) {
+      setUsernameError(err instanceof Error ? err.message : "Could not change username");
+    } finally {
+      setUsernameSaving(false);
+    }
+  }
+
   async function deleteAccount(e: React.FormEvent) {
     e.preventDefault();
     setDeleteError("");
@@ -811,6 +852,13 @@ function AccountTab() {
       setDeleting(false);
     }
   }
+
+  // Set while this account is still in its 30-day wait after a rename (the
+  // form is replaced by a note saying when it can change again).
+  const usernameWaitUntil =
+    me?.usernameNextChangeAt && new Date(me.usernameNextChangeAt).getTime() > Date.now()
+      ? new Date(me.usernameNextChangeAt)
+      : null;
 
   return (
     <div className="stack">
@@ -874,6 +922,50 @@ function AccountTab() {
         )}
         {levelSuccess && (
           <div style={{ color: "var(--good)", fontSize: 14, marginTop: 8 }}>{levelSuccess}</div>
+        )}
+      </div>
+
+      <div className="card">
+        <label>Change username</label>
+        <div className="subtitle" style={{ marginTop: 2, marginBottom: 10 }}>
+          Your new name shows everywhere, including your past sessions and stats. You can change it once
+          every 30 days.
+        </div>
+        {usernameSuccess && (
+          <div style={{ color: "var(--good)", fontSize: 14, marginBottom: usernameWaitUntil ? 8 : 0 }}>
+            {usernameSuccess}
+          </div>
+        )}
+        {usernameWaitUntil ? (
+          <div className="subtitle" style={{ marginBottom: 0 }}>
+            You can change your username again on{" "}
+            {usernameWaitUntil.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}.
+          </div>
+        ) : (
+          <form className="stack" onSubmit={submitUsername}>
+            <input
+              type="text"
+              placeholder="New username"
+              maxLength={30}
+              autoComplete="off"
+              value={newUsername}
+              onChange={(e) => setNewUsername(e.target.value)}
+            />
+            <input
+              type="password"
+              placeholder="Current password"
+              value={usernamePassword}
+              onChange={(e) => setUsernamePassword(e.target.value)}
+            />
+            {usernameError && <div className="error-text">{usernameError}</div>}
+            <button
+              className="btn primary"
+              type="submit"
+              disabled={usernameSaving || !me || newUsername.trim().length < 3 || !usernamePassword}
+            >
+              {usernameSaving ? "Changing…" : "Change username"}
+            </button>
+          </form>
         )}
       </div>
 

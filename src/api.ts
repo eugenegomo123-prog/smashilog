@@ -177,6 +177,8 @@ export const api = {
       // account id at all.
       accountId: number;
       pictureUpdatedAt: string | null;
+      // When the username can next be changed; null means it can be changed now.
+      usernameNextChangeAt: string | null;
     }>("/me"),
   // Sets the account's own level -- used to auto-fill "requested level" the
   // next time this account requests to join a session (no more per-join prompt).
@@ -246,6 +248,31 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ currentPassword, newPassword }),
     }),
+  // Renames the account (requires the current password; allowed once every 30
+  // days). The server also renames this account's past player rows, so
+  // history and partner stats stay under one name. On success the new name is
+  // saved in this browser too (it's what "Hi, ..." and the "(you)" markers
+  // read), and the "last rank I saw" marker -- which is stored under the
+  // username -- is moved across so a rename doesn't reset it.
+  changeUsername: async (currentPassword: string, newUsername: string) => {
+    const oldUsername = localStorage.getItem("smashilog_player_username");
+    const result = await request<{ username: string }>("/me/change-username", {
+      method: "POST",
+      body: JSON.stringify({ currentPassword, newUsername }),
+    });
+    try {
+      localStorage.setItem("smashilog_player_username", result.username);
+      const oldRankKey = `smashilog_last_rank_${oldUsername ?? "anon"}`;
+      const lastRank = localStorage.getItem(oldRankKey);
+      if (lastRank !== null) {
+        localStorage.setItem(`smashilog_last_rank_${result.username}`, lastRank);
+        localStorage.removeItem(oldRankKey);
+      }
+    } catch {
+      // Browser storage can be unavailable; the rename itself already worked.
+    }
+    return result;
+  },
   // Removes the login (requires the current password); past matches and
   // other players' stats are unaffected -- see worker/index.ts's
   // /me/delete-account for exactly what happens to this account's own data.

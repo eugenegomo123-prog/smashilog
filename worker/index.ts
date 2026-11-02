@@ -167,6 +167,9 @@ app.get("/api/me", async (c) => {
     // account id at all.
     accountId: account.id,
     pictureUpdatedAt: account.pictureUpdatedAt,
+    // When the username can next be changed (null = right now) -- see
+    // POST /api/me/change-username.
+    usernameNextChangeAt: nextUsernameChangeAt(account),
   });
 });
 
@@ -389,6 +392,80 @@ app.post("/api/me/change-password", async (c) => {
   const { hash, salt } = await hashPassword(newPassword);
   await db.update(accounts).set({ passwordHash: hash, passwordSalt: salt }).where(eq(accounts.id, accountId));
   return c.json({ ok: true });
+});
+
+// How long an account has to wait between username changes.
+const USERNAME_CHANGE_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000;
+
+// The moment this account may change its username again, or null if it can
+// right now (never changed it, or the 30 days are already up). Used by both
+// the change-username route (to enforce the wait) and GET /api/me (so the
+// Account tab can tell the person when they can next change it).
+function nextUsernameChangeAt(account: { usernameChangedAt: Date | null }): Date | null {
+  if (!account.usernameChangedAt) return null;
+  const next = new Date(new Date(account.usernameChangedAt).getTime() + USERNAME_CHANGE_COOLDOWN_MS);
+  return next.getTime() > Date.now() ? next : null;
+}
+
+// POST /api/me/change-username -- self-service, requires the current password
+// (same confirmation as change-password and delete-account). Same rules as
+// registering: trimmed, 3-30 characters, and not already taken. Allowed once
+// every 30 days.
+//
+// The new name is also written onto every player row linked to this account
+// (players.name is a copy of the username taken when the account joined a
+// session), so past sessions, match history and partner stats all show one
+// name instead of splitting between the old and the new. Logins aren't
+// affected: the login token is tied to the account id, not the username.
+app.post("/api/me/change-username", async (c) => {
+  const secret = playerAuthSecret(c.env);
+  const accountId = secret ? await requirePlayer(c.req.raw, secret) : null;
+  if (!accountId) return c.text("Unauthorized", 401);
+  const db = getDb(c.env.DATABASE_URL);
+  const body = await c.req.json().catch(() => ({}));
+  const currentPassword = String(body.currentPassword || "");
+  const newUsername = String(body.newUsername || "").trim();
+  if (newUsername.length < 3 || newUsername.length > 30) {
+    return c.json({ error: "Username must be 3-30 characters" }, 400);
+  }
+
+  const [account] = await db.select().from(accounts).where(eq(accounts.id, accountId));
+  if (!account || !(await verifyPassword(currentPassword, account.passwordHash, account.passwordSalt))) {
+    return c.json({ error: "Current password is incorrect" }, 401);
+  }
+  if (newUsername === account.username) {
+    return c.json({ error: "That's already your username" }, 400);
+  }
+
+  const waitUntil = nextUsernameChangeAt(account);
+  if (waitUntil) {
+    const days = Math.ceil((waitUntil.getTime() - Date.now()) / (24 * 60 * 60 * 1000));
+    return c.json(
+      {
+        error: `You can only change your username once every 30 days. Try again in ${days} day${days === 1 ? "" : "s"}.`,
+      },
+      400,
+    );
+  }
+
+  const [existing] = await db.select({ id: accounts.id }).from(accounts).where(eq(accounts.username, newUsername));
+  if (existing) return c.json({ error: "That username is already taken" }, 400);
+
+  try {
+    await db
+      .update(accounts)
+      .set({ username: newUsername, usernameChangedAt: new Date() })
+      .where(eq(accounts.id, accountId));
+  } catch (err) {
+    // Two people grabbing the same name at the same moment: both pass the
+    // check above, but the database's unique rule lets only one through.
+    const [clash] = await db.select({ id: accounts.id }).from(accounts).where(eq(accounts.username, newUsername));
+    if (clash) return c.json({ error: "That username is already taken" }, 400);
+    throw err;
+  }
+  await db.update(players).set({ name: newUsername }).where(eq(players.accountId, accountId));
+
+  return c.json({ username: newUsername });
 });
 
 // POST /api/me/delete-account -- self-service, requires the current password

@@ -53,6 +53,10 @@ export const accounts = pgTable("accounts", {
   // tags a cache-busting query param (?v=...) so a new photo doesn't keep
   // showing the old one from browser cache. See playerPictureUrl in src/api.ts.
   pictureUpdatedAt: timestamp("picture_updated_at"),
+  // When this account last changed its username (POST /api/me/change-username),
+  // used to enforce "once every 30 days". Null until the first change, so
+  // existing accounts can rename right away and need no backfill.
+  usernameChangedAt: timestamp("username_changed_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
