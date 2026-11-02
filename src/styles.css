@@ -46,6 +46,10 @@ body {
 
 button, input, select {
   font-family: inherit;
+  /* Pinch-zoom is allowed on the page (see the viewport tag in index.html),
+     but a quick double-tap on a button -- like tapping +1 twice in a row --
+     shouldn't be read as a double-tap-to-zoom gesture. */
+  touch-action: manipulation;
 }
 
 .screen {
@@ -340,7 +344,7 @@ button, input, select {
   font-size: 15px;
 }
 
-/* Rank badge art (src/assets/ranks/*.png) is drawn to glow against a dark
+/* Rank badge art (src/assets/ranks/*, loaded as the 512px .webp copies) is drawn to glow against a dark
    background -- on this app's light cream cards its fine white/gold
    linework all but disappears, so it always gets this dark showcase card
    (black center fading to dark brown at the edge) instead of the plain
@@ -444,7 +448,8 @@ label {
 
 .btn.small {
   padding: 10px 14px;
-  min-height: 40px;
+  /* 44px is the usual minimum comfortable touch target on phones. */
+  min-height: 44px;
   font-size: 13px;
 }
 
@@ -502,8 +507,14 @@ label {
   cursor: pointer;
 }
 
+/* The orange (--accent-2) is only 2.4:1 against white -- too faint for an
+   11px label -- so the active label uses the darker --accent-dark brown
+   (about 5.9:1) and the orange moves to a bar along the top edge, which also
+   keeps the active tab obvious now that its text is close in tone to the
+   inactive (muted) tabs. */
 .tabs button.active {
-  color: var(--accent-2);
+  color: var(--accent-dark);
+  box-shadow: inset 0 3px 0 var(--accent-2);
 }
 
 .badge {
@@ -603,7 +614,8 @@ label {
 
 .team-row > strong {
   flex-shrink: 0;
-  color: var(--accent-2);
+  /* Darker than --accent-2 (2.4:1 on white) so scores are easy to read. */
+  color: var(--accent-dark);
 }
 
 .score-input {
@@ -1047,4 +1059,18 @@ table.ranking th {
   text-align: center;
   padding: 40px 16px;
   font-size: 14px;
+}
+
+/* For anyone who has "reduce motion" turned on in their phone/browser
+   settings: stop the looping podium-crown bob and the fade/press
+   animations. (Standard approach -- shortens every animation/transition to
+   effectively instant rather than removing them one by one.) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

@@ -1312,7 +1312,7 @@ function AwardsPanel({ awards }: { awards: NonNullable<ReturnType<typeof buildAw
   const diffVal = (awards.bestDiff.pointsFor - awards.bestDiff.pointsAgainst) / awards.bestDiff.gamesPlayed;
   return (
     <div className="card" style={{ marginBottom: 16 }}>
-      <h3 style={{ fontSize: 15, color: "var(--accent-2)", marginTop: 0 }}>🏆 Session awards</h3>
+      <h3 style={{ fontSize: 15, color: "var(--accent-dark)", marginTop: 0 }}>🏆 Session awards</h3>
       <div className="awards-grid">
         <div className="award-tile">
           <div className="award-tile-label">📈 Best point diff</div>

@@ -449,12 +449,19 @@ export const LEVEL_LABEL: Record<Level, string> = {
 // .rank-badge-card in styles.css) -- its fine white/gold linework all but
 // disappears on this app's normal light cream cards, so always pair it with
 // that dark backdrop rather than dropping it onto a plain card.
-import fledglingBadge from "./assets/ranks/fledgling.png";
-import rallyBadge from "./assets/ranks/rally.png";
-import smashBadge from "./assets/ranks/smash.png";
-import aceBadge from "./assets/ranks/ace.png";
-import championBadge from "./assets/ranks/champion.png";
-import legendBadge from "./assets/ranks/legend.png";
+//
+// These are the 512px WebP copies (~40-55 KB each) of the full-size PNG
+// originals sitting next to them (~1.5-2 MB each, 1200px+) -- the biggest
+// place the badge is ever shown is 220px wide (.rank-badge-image), so the
+// originals made every Rank/profile page download ~2 MB for one picture.
+// The PNGs are kept in this folder as the source art; to change a badge,
+// re-export it to a 512px-wide WebP with the same name.
+import fledglingBadge from "./assets/ranks/fledgling.webp";
+import rallyBadge from "./assets/ranks/rally.webp";
+import smashBadge from "./assets/ranks/smash.webp";
+import aceBadge from "./assets/ranks/ace.webp";
+import championBadge from "./assets/ranks/champion.webp";
+import legendBadge from "./assets/ranks/legend.webp";
 
 export const TIER_BADGE_IMAGE: Record<string, string> = {
   Fledgling: fledglingBadge,
