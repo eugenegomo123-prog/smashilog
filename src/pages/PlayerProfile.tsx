@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { accountPictureUrl, api, TIER_BADGE_IMAGE } from "../api";
 import { AccountAvatar } from "../accountAvatar";
+import { Loading } from "../loading";
 import { OverallRecordCard, type OverallRecordStats } from "../overallRecord";
 
 // Same shape as api.ts's getAccountProfile() response -- kept here rather
@@ -68,7 +69,7 @@ export default function PlayerProfile() {
         ← Back
       </Link>
 
-      {!loaded && <div className="empty-state">Loading…</div>}
+      {!loaded && <Loading />}
       {loaded && !profile && <div className="empty-state">Couldn't find that player.</div>}
 
       {profile && (

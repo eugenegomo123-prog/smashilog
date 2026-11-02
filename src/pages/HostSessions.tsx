@@ -72,7 +72,7 @@ export default function HostSessions() {
         </form>
       </div>
 
-      <h3 style={{ marginTop: 28, marginBottom: 8, fontSize: 15, color: "var(--muted)" }}>Active</h3>
+      <h3 className="section-title" style={{ marginTop: 28, marginBottom: 8 }}>Active</h3>
       <div className="stack">
         {active.map((s) => (
           <SessionRow key={s.id} session={s} onClick={() => navigate(`/host/sessions/${s.id}`)} />
@@ -82,7 +82,7 @@ export default function HostSessions() {
 
       {ended.length > 0 && (
         <>
-          <h3 style={{ marginTop: 28, marginBottom: 8, fontSize: 15, color: "var(--muted)" }}>Ended</h3>
+          <h3 className="section-title" style={{ marginTop: 28, marginBottom: 8 }}>Ended</h3>
           <div className="stack">
             {ended.map((s) => (
               <SessionRow key={s.id} session={s} onClick={() => navigate(`/host/sessions/${s.id}`)} />
@@ -99,7 +99,7 @@ function SessionRow({ session, onClick }: { session: Session; onClick: () => voi
     <div className="card row between" onClick={onClick} style={{ cursor: "pointer" }}>
       <div>
         <div style={{ fontWeight: 600 }}>{session.name}</div>
-        <div style={{ fontSize: 13, color: "var(--muted)" }}>{session.courtCount} courts</div>
+        <div className="caption">{session.courtCount} courts</div>
       </div>
       <span className={`badge ${session.status === "active" ? "active" : "ended"}`}>{session.status}</span>
     </div>

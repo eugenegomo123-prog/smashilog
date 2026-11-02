@@ -108,7 +108,7 @@ export function OpponentLevelStrip({ opponentLevels }: { opponentLevels: Opponen
   if (opponentLevels.length === 0) return null;
   return (
     <div>
-      <h3 style={{ fontSize: 15, color: "var(--muted)" }}>Performance vs. opponent level</h3>
+      <h3 className="section-title">Performance vs. opponent level</h3>
       <div className="level-stat-grid" style={{ gridTemplateColumns: `repeat(${opponentLevels.length}, 1fr)` }}>
         {opponentLevels.map((o) => {
           const pct = winRatePct(o.wins, o.gamesPlayed);
@@ -152,9 +152,9 @@ export function PartnerStatsPreview({ stats }: { stats: PartnerStatsData }) {
     <div className="stack">
       {topPartner && (
         <div className="card">
-          <div style={{ fontSize: 13, color: "var(--muted)" }}>Most successful partner</div>
-          <div style={{ fontWeight: 700, fontSize: 18, marginTop: 2 }}>{topPartner.name}</div>
-          <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 2 }}>
+          <div className="caption">Most successful partner</div>
+          <div className="card-headline">{topPartner.name}</div>
+          <div className="caption" style={{ marginTop: 2 }}>
             {winRatePct(topPartner.wins, topPartner.gamesPlayed)}% win rate · {topPartner.wins}-{topPartner.losses}{" "}
             together in {topPartner.gamesPlayed} game{topPartner.gamesPlayed === 1 ? "" : "s"}
           </div>
@@ -163,7 +163,7 @@ export function PartnerStatsPreview({ stats }: { stats: PartnerStatsData }) {
 
       {partners.length > 0 && (
         <div>
-          <h3 style={{ fontSize: 15, color: "var(--muted)" }}>Win rate by partner</h3>
+          <h3 className="section-title">Win rate by partner</h3>
           <div className="record-list">
             {partners.slice(0, PREVIEW_COUNT).map((p, i) => (
               <RecordRow
@@ -183,7 +183,7 @@ export function PartnerStatsPreview({ stats }: { stats: PartnerStatsData }) {
 
       {headToHead.length > 0 && (
         <div>
-          <h3 style={{ fontSize: 15, color: "var(--muted)" }}>Head-to-head records</h3>
+          <h3 className="section-title">Head-to-head records</h3>
           <div className="record-list">
             {headToHead.slice(0, PREVIEW_COUNT).map((h, i) => (
               <RecordRow

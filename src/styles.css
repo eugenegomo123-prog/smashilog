@@ -96,6 +96,41 @@ button, input, select {
   font-size: 14px;
 }
 
+/* Small shared text styles. These replace the same few inline style={{...}}
+   objects that were copy-pasted across the pages -- same look, one place to
+   change it. Margins stay on the element where they differ by spot. */
+
+/* Small grey label/caption, e.g. "Your level", "Signed in as". */
+.caption {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.caption-xs {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Grey heading above a group of cards or rows ("Join a session", "Active"). */
+.section-title {
+  font-size: 15px;
+  color: var(--muted);
+}
+
+/* The bold headline inside a status card (a session's name, a partner's name,
+   "Waiting for the host to approve you"). */
+.card-headline {
+  font-weight: 700;
+  font-size: 18px;
+  margin-top: 2px;
+}
+
+.card-headline-sm {
+  font-weight: 700;
+  font-size: 16px;
+  margin-top: 2px;
+}
+
 .stack {
   display: flex;
   flex-direction: column;
@@ -1120,6 +1155,23 @@ table.ranking th {
   text-align: center;
   padding: 40px 16px;
   font-size: 14px;
+}
+
+/* Ring shown above "Loading…" (src/loading.tsx). With "reduce motion" on,
+   the block at the bottom of this file stops the spin, leaving a still ring. */
+.spinner {
+  display: block;
+  width: 26px;
+  height: 26px;
+  margin: 0 auto 10px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent-2);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 /* For anyone who has "reduce motion" turned on in their phone/browser

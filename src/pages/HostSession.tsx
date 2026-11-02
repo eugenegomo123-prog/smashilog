@@ -16,6 +16,7 @@ import {
 import { shareResultsImage } from "../shareImage";
 import { RankAvatar } from "../rankAvatar";
 import { alertDialog, confirmDialog, promptDialog } from "../dialogs";
+import { Loading } from "../loading";
 // Pure, dependency-free scoring module shared with the Worker's matchmaking
 // generator (worker/lib/regenerate.ts) -- imported directly rather than
 // duplicated so the grade shown here always matches the logic that actually
@@ -320,7 +321,7 @@ export default function HostSession() {
   const playerById = (pid: number) => players.find((p) => p.id === pid);
   const topRankedIds = computeTopRankedIds(players);
 
-  if (!session) return <div className="screen empty-state">{error || "Loading…"}</div>;
+  if (!session) return error ? <div className="screen empty-state">{error}</div> : <Loading screen />;
 
   const pending = players.filter((p) => !p.approved);
 
@@ -463,7 +464,7 @@ function PlayersTab({
               <div key={p.id} className="card row between">
                 <div>
                   <div style={{ fontWeight: 600 }}>{p.name}</div>
-                  <div style={{ fontSize: 13, color: "var(--muted)" }}>
+                  <div className="caption">
                     Requested level {p.requestedLevel ? `${LEVEL_ICON[p.requestedLevel]} ` : ""}{p.requestedLevel}
                   </div>
                 </div>
@@ -493,7 +494,7 @@ function PlayersTab({
         </>
       )}
 
-      <h3 style={{ fontSize: 15, color: "var(--muted)", marginTop: pending.length ? 24 : 0 }}>Add a player</h3>
+      <h3 className="section-title" style={{ marginTop: pending.length ? 24 : 0 }}>Add a player</h3>
       <form className="card row" onSubmit={addPlayer}>
         <input placeholder="Player name" value={name} onChange={(e) => setName(e.target.value)} />
         <select value={level} onChange={(e) => setLevel(e.target.value as Level)} style={{ width: 110 }}>
@@ -508,7 +509,7 @@ function PlayersTab({
         </button>
       </form>
 
-      <h3 style={{ fontSize: 15, color: "var(--muted)", marginTop: 24 }}>Roster ({approved.length})</h3>
+      <h3 className="section-title" style={{ marginTop: 24 }}>Roster ({approved.length})</h3>
       <input
         placeholder="Search players…"
         value={search}
@@ -559,7 +560,7 @@ function PlayersTab({
                 <div className="level-pill" title={LEVEL_LABEL[p.level]}>{LEVEL_ICON[p.level]}</div>
                 <div>
                   <div style={{ fontWeight: 600 }}>{p.name}</div>
-                  <div style={{ fontSize: 12, color: "var(--muted)" }}>
+                  <div className="caption-xs">
                     {LEVEL_LABEL[p.level]} · {p.wins}W-{p.losses}L · {p.gamesPlayed} games
                   </div>
                   <div style={{ fontSize: 11, color: "var(--muted)" }}>
@@ -680,7 +681,7 @@ function CourtsTab({
   return (
     <div>
       <div className="row between" style={{ marginBottom: 16 }}>
-        <div style={{ fontSize: 13, color: "var(--muted)" }}>
+        <div className="caption">
           {ongoing.length} of {session.courtCount} courts in play
         </div>
       </div>
@@ -862,7 +863,7 @@ function QueueTab({
   return (
     <div>
       <div className="row between" style={{ marginBottom: 8 }}>
-        <div style={{ fontSize: 13, color: "var(--muted)" }}>
+        <div className="caption">
           {suggested.length} suggested · {queued.length}/8 queued
         </div>
         <button
@@ -892,7 +893,7 @@ function QueueTab({
         </div>
       )}
 
-      <h3 style={{ fontSize: 15, color: "var(--muted)" }}>Suggested matches</h3>
+      <h3 className="section-title">Suggested matches</h3>
       <div className="stack">
         {suggested.map((m) => (
           <SuggestionCard
@@ -915,7 +916,7 @@ function QueueTab({
         )}
       </div>
 
-      <h3 style={{ fontSize: 15, color: "var(--muted)", marginTop: 24 }}>Build a custom match</h3>
+      <h3 className="section-title" style={{ marginTop: 24 }}>Build a custom match</h3>
       <CustomMatchBuilder
         players={players}
         ongoing={ongoing}
@@ -927,7 +928,7 @@ function QueueTab({
         onChanged={onChanged}
       />
 
-      <h3 style={{ fontSize: 15, color: "var(--muted)", marginTop: 24 }}>Actual queue ({queued.length}/8)</h3>
+      <h3 className="section-title" style={{ marginTop: 24 }}>Actual queue ({queued.length}/8)</h3>
       <p className="subtitle" style={{ marginBottom: 12 }}>
         First in line takes the next court that opens up. Participants see this list — reorder or remove below.
       </p>
@@ -1291,7 +1292,7 @@ function RankingTab({
   return (
     <div>
       <div className="row between" style={{ marginBottom: 16 }}>
-        <div style={{ fontSize: 13, color: "var(--muted)" }}>{shareMsg || " "}</div>
+        <div className="caption">{shareMsg || " "}</div>
         <button className="btn small" onClick={handleShare} disabled={sorted.length === 0 || sharing}>
           {sharing ? "Preparing image…" : "Share results"}
         </button>
@@ -1465,7 +1466,7 @@ function PlayerMatchHistory({
         </div>
         <div>
           <div style={{ fontWeight: 700, fontSize: 16 }}>{player.name}</div>
-          <div style={{ fontSize: 13, color: "var(--muted)" }}>
+          <div className="caption">
             {player.wins}-{player.losses} this session
           </div>
         </div>
@@ -1539,7 +1540,7 @@ function HistoryTab({
         style={{ marginBottom: 12 }}
       />
       {note && (
-        <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 12 }}>{note}</div>
+        <div className="caption" style={{ marginBottom: 12 }}>{note}</div>
       )}
       <div className="stack">
         {filtered.map((m) => (
@@ -1709,7 +1710,7 @@ function SettingsTab({ session, onChanged }: { session: Session; onChanged: () =
               height={180}
               style={{ borderRadius: 12, margin: "8px auto", display: "block" }}
             />
-            <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 10 }}>
+            <div className="caption-xs" style={{ marginBottom: 10 }}>
               Valid until {new Date(regQr.expiresAt).toLocaleString()}
             </div>
           </>
@@ -1733,7 +1734,7 @@ function SettingsTab({ session, onChanged }: { session: Session; onChanged: () =
           height={180}
           style={{ borderRadius: 12, margin: "8px auto", display: "block" }}
         />
-        <div style={{ fontSize: 13, color: "var(--muted)", wordBreak: "break-all", marginBottom: 10 }}>{joinUrl}</div>
+        <div className="caption" style={{ wordBreak: "break-all", marginBottom: 10 }}>{joinUrl}</div>
         <button className="btn small" onClick={copyLink}>
           {copied ? "Copied!" : "Copy link"}
         </button>

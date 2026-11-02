@@ -23,7 +23,7 @@ export default function ParticipantSessions() {
       </div>
       <p className="subtitle">Pick an active session to check in, or view results from a past one.</p>
 
-      <h3 style={{ fontSize: 15, color: "var(--muted)" }}>Active</h3>
+      <h3 className="section-title">Active</h3>
       <div className="stack">
         {active.map((s) => (
           <div key={s.id} className="card row between" style={{ cursor: "pointer" }} onClick={() => navigate(`/join/${s.id}`)}>
@@ -36,7 +36,7 @@ export default function ParticipantSessions() {
 
       {ended.length > 0 && (
         <>
-          <h3 style={{ fontSize: 15, color: "var(--muted)", marginTop: 24 }}>Past</h3>
+          <h3 className="section-title" style={{ marginTop: 24 }}>Past</h3>
           <div className="stack">
             {ended.map((s) => (
               <div key={s.id} className="card row between" style={{ cursor: "pointer" }} onClick={() => navigate(`/session/${s.id}`)}>

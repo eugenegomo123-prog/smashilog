@@ -16,6 +16,7 @@ import {
 import { playerKey } from "./ParticipantJoin";
 import { shareResultsImage } from "../shareImage";
 import { RankAvatar } from "../rankAvatar";
+import { Loading } from "../loading";
 
 type Tab = "dashboard" | "ongoing" | "queue" | "ranking" | "history";
 
@@ -295,7 +296,7 @@ export default function ParticipantSession() {
   const me = myId ? players.find((p) => p.id === myId) : undefined;
   const topRankedIds = computeTopRankedIds(players);
 
-  if (!session) return <div className="screen empty-state">Loading…</div>;
+  if (!session) return <Loading screen />;
 
   return (
     <div className="screen">
@@ -588,7 +589,7 @@ function StatusCardBody({ status }: { status: MyStatus }) {
       return (
         <div>
           <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.03 }}>⏳ PENDING APPROVAL</div>
-          <div style={{ fontSize: 16, fontWeight: 700, marginTop: 2 }}>Waiting for the host to approve you</div>
+          <div className="card-headline-sm">Waiting for the host to approve you</div>
         </div>
       );
     case "resting":
@@ -597,7 +598,7 @@ function StatusCardBody({ status }: { status: MyStatus }) {
       return (
         <div>
           <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.03 }}>💤 {label.toUpperCase()}</div>
-          <div style={{ fontSize: 16, fontWeight: 700, marginTop: 2 }}>
+          <div className="card-headline-sm">
             Set to {label.toLowerCase()} — switch to Active below to join the rotation
           </div>
         </div>
@@ -607,7 +608,7 @@ function StatusCardBody({ status }: { status: MyStatus }) {
       return (
         <div>
           <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.03 }}>⏳ NOT ASSIGNED YET</div>
-          <div style={{ fontSize: 16, fontWeight: 700, marginTop: 2 }}>The host hasn't sent you to a court yet</div>
+          <div className="card-headline-sm">The host hasn't sent you to a court yet</div>
         </div>
       );
   }
@@ -638,7 +639,7 @@ function DashboardTab({
   return (
     <div className="stack">
       <div className="card">
-        <div style={{ fontSize: 13, color: "var(--muted)" }}>Signed in as</div>
+        <div className="caption">Signed in as</div>
         <div style={{ fontSize: 20, fontWeight: 700 }}>{player.name}</div>
       </div>
       <div className="card row between" style={{ background: bg, color: fg, alignItems: "center" }}>
@@ -827,7 +828,7 @@ function RankingTab({
   return (
     <div>
       <div className="row between" style={{ marginBottom: 16 }}>
-        <div style={{ fontSize: 13, color: "var(--muted)" }}>{shareMsg || " "}</div>
+        <div className="caption">{shareMsg || " "}</div>
         <button className="btn small" onClick={handleShare} disabled={sorted.length === 0 || sharing}>
           {sharing ? "Preparing image…" : "Share results"}
         </button>
@@ -1005,7 +1006,7 @@ function PlayerMatchHistory({
         </div>
         <div>
           <div style={{ fontWeight: 700, fontSize: 16 }}>{player.name}</div>
-          <div style={{ fontSize: 13, color: "var(--muted)" }}>
+          <div className="caption">
             {player.wins}-{player.losses} this session
           </div>
         </div>

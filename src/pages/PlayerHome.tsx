@@ -4,6 +4,7 @@ import { api, TIER_BADGE_IMAGE, rankScore, LEVELS, LEVEL_ICON, LEVEL_LABEL, type
 import { compressImageFile } from "../imageUpload";
 import { AccountAvatar } from "../accountAvatar";
 import { confirmDialog } from "../dialogs";
+import { Loading } from "../loading";
 import { OverallRecordCard, type OverallRecordStats } from "../overallRecord";
 import { PartnerStatsPreview, type PartnerStatsData } from "../partnerStats";
 
@@ -218,7 +219,7 @@ function RankingTab() {
         ))}
       </div>
 
-      {entries === null && <div className="empty-state">Loading…</div>}
+      {entries === null && <Loading />}
       {entries && entries.length === 0 && (
         <div className="empty-state">No games played {scope === "all" ? "yet" : "in that month"}.</div>
       )}
@@ -406,8 +407,8 @@ function StatsTab() {
     <div className="stack">
       {me?.activeParticipation && (
         <div className="card">
-          <div style={{ fontSize: 13, color: "var(--muted)" }}>You're in a session right now</div>
-          <div style={{ fontWeight: 700, fontSize: 18, marginTop: 2 }}>{me.activeParticipation.sessionName}</div>
+          <div className="caption">You're in a session right now</div>
+          <div className="card-headline">{me.activeParticipation.sessionName}</div>
           {me.activeParticipation.approved ? (
             <button
               className="btn primary"
@@ -426,13 +427,13 @@ function StatsTab() {
 
       {stats && <OverallRecordCard stats={stats} />}
 
-      <h3 style={{ fontSize: 15, color: "var(--muted)" }}>Join a session</h3>
+      <h3 className="section-title">Join a session</h3>
       <div className="stack">
         {sessionsList?.map((s) => (
           <div key={s.id} className="card row between">
             <div>
               <div style={{ fontWeight: 600 }}>{s.name}</div>
-              <div style={{ fontSize: 12, color: "var(--muted)" }}>{s.playerCount} players</div>
+              <div className="caption-xs">{s.playerCount} players</div>
             </div>
             {s.alreadyJoined ? (
               <span className={`badge ${s.approved ? "active" : "pending"}`}>
@@ -451,7 +452,7 @@ function StatsTab() {
       {partnerStats && (
         <>
           <div>
-            <h3 style={{ fontSize: 15, color: "var(--muted)", marginBottom: 2 }}>Partner stats</h3>
+            <h3 className="section-title" style={{ marginBottom: 2 }}>Partner stats</h3>
             <div className="subtitle" style={{ margin: 0 }}>
               A summary of how you play with and against other members.
             </div>
@@ -506,7 +507,7 @@ function RankTrendChart({ points }: { points: RatingHistoryPoint[] }) {
 
   return (
     <div className="card">
-      <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 8 }}>
+      <div className="caption" style={{ marginBottom: 8 }}>
         Rank over time <span>(last {points.length} rated matches)</span>
       </div>
       <svg viewBox={`0 0 ${width} ${height}`} style={{ width: "100%", height: "auto", display: "block" }}>
@@ -577,7 +578,7 @@ function RankTab() {
       .finally(() => setLoaded(true));
   }, []);
 
-  if (!loaded) return <div className="empty-state">Loading…</div>;
+  if (!loaded) return <Loading />;
 
   if (!rating) {
     return <div className="empty-state">Play a rated match to earn your first rank badge.</div>;
@@ -661,7 +662,7 @@ function HistoryTab() {
     api.getMyHistory().then(setHistory);
   }, []);
 
-  if (history === null) return <div className="empty-state">Loading…</div>;
+  if (history === null) return <Loading />;
   if (history.length === 0) return <div className="empty-state">No past sessions yet.</div>;
 
   return (
@@ -675,7 +676,7 @@ function HistoryTab() {
         >
           <div>
             <div style={{ fontWeight: 600 }}>{h.sessionName}</div>
-            <div style={{ fontSize: 12, color: "var(--muted)" }}>
+            <div className="caption-xs">
               {new Date(h.endedAt ?? h.createdAt).toLocaleDateString()} · {h.gamesPlayed} games · {h.pointsFor} pts
             </div>
           </div>
@@ -814,7 +815,7 @@ function AccountTab() {
   return (
     <div className="stack">
       <div className="card">
-        <div style={{ fontSize: 13, color: "var(--muted)" }}>Username</div>
+        <div className="caption">Username</div>
         <div style={{ fontWeight: 700, fontSize: 18 }}>{api.playerUsername()}</div>
       </div>
 

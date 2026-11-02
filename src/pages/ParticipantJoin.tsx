@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, LEVELS, LEVEL_ICON, LEVEL_LABEL, type Level, type Player, type Session } from "../api";
+import { Loading } from "../loading";
 
 function playerKey(sessionId: number) {
   return `smashilog_player_${sessionId}`;
@@ -93,7 +94,7 @@ export default function ParticipantJoin() {
     );
   }
 
-  if (!session) return <div className="screen empty-state">Loading…</div>;
+  if (!session) return <Loading screen />;
 
   if (isLoggedIn) {
     return (
@@ -106,8 +107,8 @@ export default function ParticipantJoin() {
         </div>
         <p className="subtitle">Request to join as {api.playerUsername()}.</p>
         <div className="card">
-          <div style={{ fontSize: 13, color: "var(--muted)" }}>Your level</div>
-          <div style={{ fontWeight: 700, fontSize: 18, marginTop: 2 }}>
+          <div className="caption">Your level</div>
+          <div className="card-headline">
             {accountLevel ? `${LEVEL_ICON[accountLevel]} ${accountLevel} · ${LEVEL_LABEL[accountLevel]}` : "Loading…"}
           </div>
           <div className="subtitle" style={{ marginTop: 6 }}>

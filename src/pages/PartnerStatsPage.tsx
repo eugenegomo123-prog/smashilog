@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
+import { Loading } from "../loading";
 import { RecordRow, OpponentLevelStrip, type PartnerStatsData } from "../partnerStats";
 
 // The full partner/opponent breakdown -- reached from the "Show all" link on
@@ -33,14 +34,14 @@ export default function PartnerStatsPage() {
         <h1>Partner &amp; opponent stats</h1>
       </div>
 
-      {stats === null && <div className="empty-state">Loading…</div>}
+      {stats === null && <Loading />}
       {empty && <div className="empty-state">No completed matches yet.</div>}
 
       {stats && !empty && (
         <div className="stack">
           {stats.partners.length > 0 && (
             <div>
-              <h3 style={{ fontSize: 15, color: "var(--muted)" }}>Win rate by partner</h3>
+              <h3 className="section-title">Win rate by partner</h3>
               <div className="record-list">
                 {stats.partners.map((p, i) => (
                   <RecordRow
@@ -60,7 +61,7 @@ export default function PartnerStatsPage() {
 
           {stats.headToHead.length > 0 && (
             <div>
-              <h3 style={{ fontSize: 15, color: "var(--muted)" }}>Head-to-head records</h3>
+              <h3 className="section-title">Head-to-head records</h3>
               <div className="record-list">
                 {stats.headToHead.map((h, i) => (
                   <RecordRow
