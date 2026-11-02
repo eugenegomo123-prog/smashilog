@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api, TIER_BADGE_IMAGE, rankScore, LEVELS, LEVEL_ICON, LEVEL_LABEL, type Level } from "../api";
 import { compressImageFile } from "../imageUpload";
 import { AccountAvatar } from "../accountAvatar";
+import { confirmDialog } from "../dialogs";
 import { OverallRecordCard, type OverallRecordStats } from "../overallRecord";
 import { PartnerStatsPreview, type PartnerStatsData } from "../partnerStats";
 
@@ -791,13 +792,11 @@ function AccountTab() {
     e.preventDefault();
     setDeleteError("");
     if (
-      // window.confirm, not the bare name -- this component already has a
-      // `confirm` state variable (the "Confirm new password" field) that
-      // shadows the global dialog function of the same name.
-      !window.confirm(
+      !(await confirmDialog(
         "Delete your account? Your login goes away for good. Your past matches and scores stay in session " +
           "history (same as a guest player's would), but you won't be able to log back in as yourself.",
-      )
+        { confirmLabel: "Delete account", danger: true },
+      ))
     ) {
       return;
     }

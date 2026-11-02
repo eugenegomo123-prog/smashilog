@@ -15,6 +15,7 @@ import {
 } from "../api";
 import { shareResultsImage } from "../shareImage";
 import { RankAvatar } from "../rankAvatar";
+import { alertDialog, confirmDialog, promptDialog } from "../dialogs";
 // Pure, dependency-free scoring module shared with the Worker's matchmaking
 // generator (worker/lib/regenerate.ts) -- imported directly rather than
 // duplicated so the grade shown here always matches the logic that actually
@@ -380,22 +381,42 @@ export default function HostSession() {
       {tab === "settings" && <SettingsTab session={session} onChanged={load} />}
 
       <nav className="tabs">
-        <TabButton active={tab === "players"} onClick={() => setTab("players")} label="🧑‍🤝‍🧑 Players" badge={pending.length} />
-        <TabButton active={tab === "courts"} onClick={() => setTab("courts")} label="🏸 Courts" />
-        <TabButton active={tab === "queue"} onClick={() => setTab("queue")} label="⏳ Queue" />
-        <TabButton active={tab === "ranking"} onClick={() => setTab("ranking")} label="🏆 Ranking" />
-        <TabButton active={tab === "history"} onClick={() => setTab("history")} label="📜 History" />
-        <TabButton active={tab === "settings"} onClick={() => setTab("settings")} label="⚙️ Settings" />
+        <TabButton active={tab === "players"} onClick={() => setTab("players")} icon="🧑‍🤝‍🧑" label="Players" badge={pending.length} />
+        <TabButton active={tab === "courts"} onClick={() => setTab("courts")} icon="🏸" label="Courts" />
+        <TabButton active={tab === "queue"} onClick={() => setTab("queue")} icon="⏳" label="Queue" />
+        <TabButton active={tab === "ranking"} onClick={() => setTab("ranking")} icon="🏆" label="Ranking" />
+        <TabButton active={tab === "history"} onClick={() => setTab("history")} icon="📜" label="History" />
+        <TabButton active={tab === "settings"} onClick={() => setTab("settings")} icon="⚙️" label="Settings" />
       </nav>
     </div>
   );
 }
 
-function TabButton({ active, onClick, label, badge }: { active: boolean; onClick: () => void; label: string; badge?: number }) {
+// Icon always on its own line above the label (instead of one "🏸 Courts"
+// string that wraps wherever it happens to run out of room) so all six host
+// tabs line up the same way on a narrow phone. A pending-request count sits
+// on the icon's corner rather than as a pill beside the label, which is what
+// used to push the Players tab onto a third line.
+function TabButton({
+  active,
+  onClick,
+  icon,
+  label,
+  badge,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: string;
+  label: string;
+  badge?: number;
+}) {
   return (
-    <button className={active ? "active" : ""} onClick={onClick}>
-      {label}
-      {!!badge && <span className="badge pending" style={{ marginLeft: 4 }}>{badge}</span>}
+    <button className={active ? "active" : ""} onClick={onClick} aria-current={active ? "page" : undefined}>
+      <span className="tab-icon" aria-hidden="true">
+        {icon}
+      </span>
+      <span className="tab-label">{label}</span>
+      {!!badge && <span className="tab-badge">{badge}</span>}
     </button>
   );
 }
@@ -600,17 +621,19 @@ function PlayersTab({
                 <button
                   className="btn small"
                   onClick={async () => {
-                    const newPassword = window.prompt(`New password for ${p.name} (at least 6 characters):`);
+                    // Plain text (not a masked field) on purpose: the host picks
+                    // this password and then tells the player, so they need to
+                    // see what they typed -- same as the old browser prompt.
+                    const newPassword = await promptDialog(`New password for ${p.name} (at least 6 characters):`, {
+                      confirmLabel: "Reset",
+                      validate: (value) => (value.length < 6 ? "Password must be at least 6 characters." : null),
+                    });
                     if (newPassword === null) return; // cancelled
-                    if (newPassword.length < 6) {
-                      alert("Password must be at least 6 characters.");
-                      return;
-                    }
                     try {
                       await api.resetPlayerPassword(p.id, newPassword);
-                      alert(`${p.name}'s password has been reset.`);
+                      await alertDialog(`${p.name}'s password has been reset.`);
                     } catch (err) {
-                      alert(err instanceof Error ? err.message : "Could not reset this password");
+                      await alertDialog(err instanceof Error ? err.message : "Could not reset this password");
                     }
                   }}
                 >
@@ -703,7 +726,12 @@ function ScoreCard({
   async function submit() {
     if (score1 === "" || score2 === "") return;
     if (Number(score1) === Number(score2)) {
-      if (!confirm("Scores are tied — is that right? Badminton games don't usually end in a tie.")) return;
+      if (
+        !(await confirmDialog("Scores are tied — is that right? Badminton games don't usually end in a tie.", {
+          confirmLabel: "Yes, save it",
+        }))
+      )
+        return;
     }
     setSubmitting(true);
     try {
@@ -715,7 +743,13 @@ function ScoreCard({
   }
 
   async function remove() {
-    if (!confirm("Remove this match without recording a score? The court and players will be freed up.")) return;
+    if (
+      !(await confirmDialog("Remove this match without recording a score? The court and players will be freed up.", {
+        confirmLabel: "Remove match",
+        danger: true,
+      }))
+    )
+      return;
     setRemoving(true);
     try {
       await api.deleteMatch(match.id);
@@ -1154,7 +1188,13 @@ function ActualQueueSection({
   }
 
   async function remove(matchId: number) {
-    if (!confirm("Remove this match from the queue? These players will go back into the pool.")) return;
+    if (
+      !(await confirmDialog("Remove this match from the queue? These players will go back into the pool.", {
+        confirmLabel: "Remove match",
+        danger: true,
+      }))
+    )
+      return;
     setBusyId(matchId);
     try {
       await api.deleteMatch(matchId);
@@ -1533,7 +1573,12 @@ function HistoryCard({
 
   async function save() {
     if (Number(score1) === Number(score2)) {
-      if (!confirm("Scores are tied — is that right? Badminton games don't usually end in a tie.")) return;
+      if (
+        !(await confirmDialog("Scores are tied — is that right? Badminton games don't usually end in a tie.", {
+          confirmLabel: "Yes, save it",
+        }))
+      )
+        return;
     }
     setError("");
     try {
@@ -1546,7 +1591,13 @@ function HistoryCard({
   }
 
   async function remove() {
-    if (!confirm("Delete this match from history? Everyone's stats will be recalculated.")) return;
+    if (
+      !(await confirmDialog("Delete this match from history? Everyone's stats will be recalculated.", {
+        confirmLabel: "Delete match",
+        danger: true,
+      }))
+    )
+      return;
     setDeleting(true);
     setError("");
     try {
@@ -1755,12 +1806,18 @@ function SettingsTab({ session, onChanged }: { session: Session; onChanged: () =
         <button
           className="btn danger"
           onClick={async () => {
-            if (!confirm(`Delete "${session.name}" and all its data? This cannot be undone.`)) return;
+            if (
+              !(await confirmDialog(`Delete "${session.name}" and all its data? This cannot be undone.`, {
+                confirmLabel: "Delete session",
+                danger: true,
+              }))
+            )
+              return;
             try {
               await api.deleteSession(session.id);
               navigate("/host/sessions");
             } catch (err) {
-              alert(err instanceof Error ? err.message : "Could not delete this session");
+              await alertDialog(err instanceof Error ? err.message : "Could not delete this session");
             }
           }}
         >

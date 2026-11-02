@@ -11,22 +11,27 @@ import Register from "./pages/Register";
 import PlayerHome from "./pages/PlayerHome";
 import PlayerProfile from "./pages/PlayerProfile";
 import PartnerStatsPage from "./pages/PartnerStatsPage";
+import { DialogHost } from "./dialogs";
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/" element={<Home />} />
-      <Route path="/host" element={<HostLogin />} />
-      <Route path="/host/sessions" element={<HostSessions />} />
-      <Route path="/host/sessions/:id" element={<HostSession />} />
-      <Route path="/join" element={<ParticipantSessions />} />
-      <Route path="/join/:id" element={<ParticipantJoin />} />
-      <Route path="/session/:id" element={<ParticipantSession />} />
-      <Route path="/login" element={<Login />} />
-      <Route path="/register" element={<Register />} />
-      <Route path="/me" element={<PlayerHome />} />
-      <Route path="/me/partner-stats" element={<PartnerStatsPage />} />
-      <Route path="/player/:id" element={<PlayerProfile />} />
-    </Routes>
+    <>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/host" element={<HostLogin />} />
+        <Route path="/host/sessions" element={<HostSessions />} />
+        <Route path="/host/sessions/:id" element={<HostSession />} />
+        <Route path="/join" element={<ParticipantSessions />} />
+        <Route path="/join/:id" element={<ParticipantJoin />} />
+        <Route path="/session/:id" element={<ParticipantSession />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/me" element={<PlayerHome />} />
+        <Route path="/me/partner-stats" element={<PartnerStatsPage />} />
+        <Route path="/player/:id" element={<PlayerProfile />} />
+      </Routes>
+      {/* Draws the in-app alert/confirm/prompt dialogs (src/dialogs.tsx) on top of whichever page is open. */}
+      <DialogHost />
+    </>
   );
 }

@@ -491,6 +491,7 @@ label {
 }
 
 .tabs button {
+  position: relative;
   flex: 1;
   min-height: 52px;
   padding: 12px 4px 10px;
@@ -505,6 +506,36 @@ label {
   justify-content: center;
   gap: 4px;
   cursor: pointer;
+}
+
+/* Tab with the icon stacked above the label (HostSession.tsx's TabButton).
+   The label never wraps, and an optional count badge (pending join
+   requests) sits on the icon's top-right corner. */
+.tabs button .tab-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.tabs button .tab-label {
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.tabs button .tab-badge {
+  position: absolute;
+  top: 4px;
+  left: calc(50% + 6px);
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  box-sizing: border-box;
+  border-radius: 999px;
+  background: var(--bad);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
 }
 
 /* The orange (--accent-2) is only 2.4:1 against white -- too faint for an
@@ -666,6 +697,36 @@ label {
   font-weight: 700;
   color: var(--text);
   margin: 0 0 18px;
+}
+
+/* The in-app alert/confirm/prompt dialogs (src/dialogs.tsx) reuse
+   .modal-overlay/.modal-card above. Their messages can be a full sentence or
+   two (e.g. "Delete your account? ..."), so slightly smaller and less heavy
+   than StatusPopup's one-liners. */
+.modal-card p.dialog-message {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.dialog-input {
+  margin-bottom: 8px;
+  text-align: left;
+}
+
+.dialog-error {
+  text-align: left;
+  margin: 0 0 10px;
+}
+
+.dialog-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.dialog-actions .btn {
+  flex: 1;
 }
 
 @keyframes fadein {
