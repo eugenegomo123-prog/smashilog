@@ -16,7 +16,7 @@ import {
 import { playerKey } from "./ParticipantJoin";
 import { shareResultsImage } from "../shareImage";
 import { RankAvatar } from "../rankAvatar";
-import { Loading } from "../loading";
+import { PageSkeleton } from "../ui/Skeleton";
 import { Icon } from "../ui/Icon";
 import { BottomNav, type NavItem } from "../ui/BottomNav";
 import { SessionHeader } from "../ui/SessionHeader";
@@ -306,7 +306,7 @@ export default function ParticipantSession() {
   const me = myId ? players.find((p) => p.id === myId) : undefined;
   const topRankedIds = computeTopRankedIds(players);
 
-  if (!session) return <Loading screen />;
+  if (!session) return <PageSkeleton nav />;
 
   // A finished session only has its results to look at.
   const navItems: NavItem<Tab>[] = isEnded
@@ -323,7 +323,7 @@ export default function ParticipantSession() {
       ];
 
   return (
-    <div className="screen">
+    <div className="screen rail wide">
       {/* While the session is live and we're on any tab other than Home,
           this just returns to Home instead of leaving the session --
           otherwise tapping "back" from, say, History dropped you all the way
@@ -810,7 +810,7 @@ function OngoingTab({
   }
 
   return (
-    <div className="stack">
+    <div className="stack cols">
       {slots.map(({ court, match }) => (match ? matchCard(match) : <OpenCourt key={court.id} label={court.label} />))}
       {extra.map(matchCard)}
       {slots.length === 0 && extra.length === 0 && <div className="empty-state">No games in progress.</div>}
@@ -845,7 +845,7 @@ function QueueTab({
           {queued.length} {queued.length === 1 ? "match" : "matches"}
         </span>
       </div>
-      <div className="stack">
+      <div className="stack cols">
         {queued.map((m, i) => {
           const mine = [...m.team1, ...m.team2].includes(myId ?? -1);
           const flags = matchFlags(m.team1, m.team2, playerById, topRankedIds);
@@ -1118,7 +1118,7 @@ function PlayerMatchHistory({
         </div>
       </div>
 
-      <div className="stack">
+      <div className="stack cols">
         {matches.map((m) => (
           <HistoryItem key={m.id} match={m} playerById={playerById} focusId={player.id} />
         ))}
@@ -1155,7 +1155,7 @@ function HistoryTab({
           </button>
         </div>
       )}
-      <div className="stack">
+      <div className="stack cols">
         {filtered.map((m) => (
           <HistoryItem key={m.id} match={m} playerById={playerById} focusId={myId} />
         ))}

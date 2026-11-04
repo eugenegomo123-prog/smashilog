@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { api, type Session } from "../api";
 import { Icon } from "../ui/Icon";
 import { SessionRow } from "../ui/SessionRow";
+import { ListSkeleton } from "../ui/Skeleton";
 
 export default function HostSessions() {
   const navigate = useNavigate();
@@ -107,6 +108,7 @@ export default function HostSessions() {
             onClick={() => navigate(`/host/sessions/${s.id}`)}
           />
         ))}
+        {sessions === null && <ListSkeleton rows={2} />}
         {sessions && active.length === 0 && <div className="empty-state">No active sessions yet.</div>}
       </div>
 

@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { api, type Session } from "../api";
 import { Icon } from "../ui/Icon";
 import { SessionRow } from "../ui/SessionRow";
+import { ListSkeleton } from "../ui/Skeleton";
 
 export default function ParticipantSessions() {
   const navigate = useNavigate();
@@ -31,6 +32,7 @@ export default function ParticipantSessions() {
         {active.map((s) => (
           <SessionRow key={s.id} title={s.name} status="active" onClick={() => navigate(`/join/${s.id}`)} />
         ))}
+        {sessions === null && <ListSkeleton rows={2} />}
         {sessions && active.length === 0 && <div className="empty-state">No active sessions right now.</div>}
       </div>
 

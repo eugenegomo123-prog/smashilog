@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { Icon } from "../ui/Icon";
-import { Loading } from "../loading";
+import { ListSkeleton } from "../ui/Skeleton";
 import { RecordRow, OpponentLevelStrip, type PartnerStatsData } from "../partnerStats";
 
 // The full partner/opponent breakdown -- reached from the "Show all" link on
@@ -36,7 +36,7 @@ export default function PartnerStatsPage() {
         <h1>Partner &amp; opponent stats</h1>
       </div>
 
-      {stats === null && <Loading />}
+      {stats === null && <ListSkeleton rows={4} />}
       {empty && <div className="empty-state">No completed matches yet.</div>}
 
       {stats && !empty && (

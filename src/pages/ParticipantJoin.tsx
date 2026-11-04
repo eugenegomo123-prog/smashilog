@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, LEVELS, LEVEL_ICON, LEVEL_LABEL, type Level, type Player, type Session } from "../api";
-import { Loading } from "../loading";
+import { PageSkeleton } from "../ui/Skeleton";
 import { Icon } from "../ui/Icon";
 import { SessionRow } from "../ui/SessionRow";
 
@@ -97,7 +97,7 @@ export default function ParticipantJoin() {
     );
   }
 
-  if (!session) return <Loading screen />;
+  if (!session) return <PageSkeleton list />;
 
   if (isLoggedIn) {
     return (

@@ -16,7 +16,7 @@ import {
 import { shareResultsImage } from "../shareImage";
 import { RankAvatar } from "../rankAvatar";
 import { alertDialog, confirmDialog, promptDialog } from "../dialogs";
-import { Loading } from "../loading";
+import { PageSkeleton } from "../ui/Skeleton";
 import { Icon } from "../ui/Icon";
 import { BottomNav, type NavItem } from "../ui/BottomNav";
 import { SessionHeader } from "../ui/SessionHeader";
@@ -329,7 +329,7 @@ export default function HostSession() {
   const playerById = (pid: number) => players.find((p) => p.id === pid);
   const topRankedIds = computeTopRankedIds(players);
 
-  if (!session) return error ? <div className="screen empty-state">{error}</div> : <Loading screen />;
+  if (!session) return error ? <div className="screen empty-state">{error}</div> : <PageSkeleton nav />;
 
   const pending = players.filter((p) => !p.approved);
 
@@ -343,7 +343,7 @@ export default function HostSession() {
   ];
 
   return (
-    <div className="screen">
+    <div className="screen rail wide">
       {/* On the Settings page (opened from the gear below) "back" returns to
           the Live tab instead of leaving the session. */}
       <Link
@@ -564,7 +564,7 @@ function PlayersTab({
           </button>
         )}
       </div>
-      <div className="stack">
+      <div className="stack cols">
         {filteredApproved.map((p) => (
           <div key={p.id} className="card">
             <div className="row between">
@@ -707,7 +707,7 @@ function CourtsTab({
           {ongoing.length} of {session.courtCount} in play
         </span>
       </div>
-      <div className="stack">
+      <div className="stack cols">
         {slots.map(({ court, match }) =>
           match ? (
             <ScoreCard
@@ -939,7 +939,7 @@ function QueueTab({
         <h3 className="section-title">Suggested matches</h3>
         <span className="caption">{suggested.length}</span>
       </div>
-      <div className="stack">
+      <div className="stack cols">
         {suggested.map((m) => (
           <SuggestionCard
             key={m.id}
@@ -1248,7 +1248,7 @@ function ActualQueueSection({
   }
 
   return (
-    <div className="stack">
+    <div className="stack cols">
       {queued.map((m, i) => {
         const flags = matchFlags(m.team1, m.team2, playerById, topRankedIds);
         const busy = busyId === m.id;
@@ -1515,7 +1515,7 @@ function PlayerMatchHistory({
         </div>
       </div>
 
-      <div className="stack">
+      <div className="stack cols">
         {matches.map((m) => (
           <HistoryItem key={m.id} match={m} playerById={playerById} focusId={player.id} />
         ))}
@@ -1573,7 +1573,7 @@ function HistoryTab({
       {note && (
         <div className="caption" style={{ marginBottom: 12 }}>{note}</div>
       )}
-      <div className="stack">
+      <div className="stack cols">
         {filtered.map((m) => (
           <HistoryCard key={m.id} match={m} playerById={playerById} onChanged={onChanged} onDeleted={handleDeleted} />
         ))}

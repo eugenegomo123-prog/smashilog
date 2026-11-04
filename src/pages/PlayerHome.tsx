@@ -4,7 +4,7 @@ import { api, TIER_BADGE_IMAGE, rankScore, LEVELS, LEVEL_ICON, LEVEL_LABEL, type
 import { compressImageFile } from "../imageUpload";
 import { AccountAvatar } from "../accountAvatar";
 import { confirmDialog } from "../dialogs";
-import { Loading } from "../loading";
+import { BadgeSkeleton, ListSkeleton } from "../ui/Skeleton";
 import { BottomNav, type NavItem } from "../ui/BottomNav";
 import { Icon } from "../ui/Icon";
 import { RankLegend, RankRow } from "../ui/RankRows";
@@ -82,7 +82,7 @@ export default function PlayerHome() {
   if (!api.isPlayerLoggedIn()) return null;
 
   return (
-    <div className="screen">
+    <div className="screen rail">
       <Link className="back-link" to="/">
         <Icon name="chevron-left" size={16} />
         Back
@@ -235,7 +235,7 @@ function RankingTab() {
         ))}
       </div>
 
-      {entries === null && <Loading />}
+      {entries === null && <ListSkeleton kind="rank" rows={6} />}
       {entries && entries.length === 0 && (
         <div className="empty-state">No games played {scope === "all" ? "yet" : "in that month"}.</div>
       )}
@@ -581,7 +581,7 @@ function RankTab() {
       .finally(() => setLoaded(true));
   }, []);
 
-  if (!loaded) return <Loading />;
+  if (!loaded) return <BadgeSkeleton />;
 
   if (!rating) {
     return <div className="empty-state">Play a rated match to earn your first rank badge.</div>;
@@ -665,7 +665,7 @@ function HistoryTab() {
     api.getMyHistory().then(setHistory);
   }, []);
 
-  if (history === null) return <Loading />;
+  if (history === null) return <ListSkeleton rows={3} />;
   if (history.length === 0) return <div className="empty-state">No past sessions yet.</div>;
 
   return (

@@ -687,8 +687,8 @@ button.back-link {
   border-color: rgba(46, 229, 127, 0.35);
 }
 
-/* The one looping animation in the app: a soft ring that fades outward from
-   the LIVE dot. Only transform and opacity change, so it costs almost nothing,
+/* One of the two looping animations in the app (the other is the podium
+   crown's bob): a soft ring that fades outward from the LIVE dot. Only transform and opacity change, so it costs almost nothing,
    and the reduced-motion block at the bottom of this file stops it. */
 .live-pill.live i::after {
   content: "";
@@ -2309,6 +2309,241 @@ button.back-link {
 
 .card.danger-zone label {
   color: var(--bad);
+}
+
+/* ---------- Phase 7: loading skeletons, motion, tablet and desktop ---------- */
+
+/* Grey placeholder shapes (src/ui/Skeleton.tsx). The group stays invisible for
+   the first 150ms so a quick load never flashes, then fades in. The pulse is on
+   one wrapper, not on every shape, so it is a single cheap layer. */
+.skel-group {
+  animation: skel-in 0.2s ease-out 0.15s backwards;
+}
+
+.skel-pulse {
+  animation: skel-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes skel-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes skel-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.skel {
+  display: block;
+  max-width: 100%;
+  border-radius: 8px;
+  background: var(--border);
+}
+
+.skel-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.skel-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 60px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.skel-lines {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skel-match-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.skel-badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 32px 16px 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.skel-tabs > span {
+  position: relative;
+  flex: 1;
+  min-height: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+/* A page fades in when it first appears (and when a skeleton is replaced by the
+   real page). Opacity only: a transform here would also move the fixed bottom
+   bar. It runs when a page is created, never on the 4-5 second data refresh. */
+.screen {
+  animation: screen-in 0.2s ease-out;
+}
+
+@keyframes screen-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* The podium's three places rise into view one after another when the Ranking
+   tab opens. */
+.podium-place {
+  animation: rise-in 0.35s ease-out backwards;
+}
+
+.podium-place.bronze { animation-delay: 0.05s; }
+.podium-place.silver { animation-delay: 0.12s; }
+.podium-place.gold { animation-delay: 0.2s; }
+
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+
+.hist-head:active {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* Long history lists: let the browser skip drawing cards that are off screen.
+   "auto" remembers each card's real height once it has been seen. */
+.hist {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 76px;
+}
+
+/* Grids: used by the court, queue, player and history lists on wider screens
+   (see .cols below). On a phone these are just the normal single column. */
+
+/* Tablet (768px and up): session pages get a little wider and the lists run
+   in two columns. The phone layout above is untouched. */
+@media (min-width: 768px) {
+  .screen {
+    padding-left: calc(24px + env(safe-area-inset-left));
+    padding-right: calc(24px + env(safe-area-inset-right));
+  }
+
+  .screen.rail {
+    max-width: 680px;
+  }
+
+  .screen.rail.wide {
+    max-width: 760px;
+  }
+
+  .screen.rail .tabs {
+    max-width: 680px;
+  }
+
+  .screen.rail.wide .tabs {
+    max-width: 760px;
+  }
+
+  .stack.cols {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+
+  .stack.cols > .empty-state,
+  .stack.cols > .queue-card.hero,
+  .stack.cols > .span-all {
+    grid-column: 1 / -1;
+  }
+
+  /* The ranking reads best as one column of limited width, centred. */
+  .screen.wide .rank-legend,
+  .screen.wide .rank-list,
+  .screen.wide .podium {
+    max-width: 640px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+}
+
+/* Desktop (1024px and up): the bottom bar becomes a rail down the left side
+   and the page uses the width. --w is the page's total width; the rail is
+   placed against its left edge. */
+@media (min-width: 1024px) {
+  .screen.rail {
+    --w: 860px;
+    max-width: var(--w);
+    padding-left: calc(136px + env(safe-area-inset-left));
+    padding-bottom: 40px;
+  }
+
+  /* Repeats max-width because the tablet rule above for .screen.rail.wide is
+     more specific than .screen.rail and would otherwise keep winning. */
+  .screen.rail.wide {
+    --w: 1120px;
+    max-width: var(--w);
+  }
+
+  .screen.rail .tabs {
+    top: 24px;
+    bottom: auto;
+    left: max(16px, calc((100% - var(--w)) / 2 + 16px));
+    right: auto;
+    width: 96px;
+    max-width: none;
+    margin: 0;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    background: var(--panel);
+    box-shadow: none;
+  }
+
+  .screen.rail .tabs button {
+    flex: none;
+    width: 100%;
+    min-height: 64px;
+  }
+
+  .screen.rail .tabs button:hover {
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  .screen.rail .tabs button.active::before {
+    top: 50%;
+    left: -8px;
+    width: 3px;
+    height: 26px;
+    margin: -13px 0 0;
+    border-radius: 0 4px 4px 0;
+  }
+
+  .screen.rail .tabs button .tab-badge {
+    top: 6px;
+  }
+
+  .skel-tabs > span {
+    flex: none;
+    min-height: 64px;
+  }
 }
 
 /* For anyone who has "reduce motion" turned on in their phone/browser

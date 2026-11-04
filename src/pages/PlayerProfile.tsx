@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { accountPictureUrl, api, TIER_BADGE_IMAGE } from "../api";
 import { AccountAvatar } from "../accountAvatar";
-import { Loading } from "../loading";
+import { ProfileSkeleton } from "../ui/Skeleton";
 import { Icon } from "../ui/Icon";
 import { OverallRecordCard, type OverallRecordStats } from "../overallRecord";
 
@@ -71,7 +71,7 @@ export default function PlayerProfile() {
         Back
       </Link>
 
-      {!loaded && <Loading />}
+      {!loaded && <ProfileSkeleton />}
       {loaded && !profile && <div className="empty-state">Couldn't find that player.</div>}
 
       {profile && (
