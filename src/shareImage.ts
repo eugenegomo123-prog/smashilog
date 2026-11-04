@@ -41,6 +41,7 @@ const FOOTER_H = 92;
 const MAX_REST_ROWS = 12; // beyond this we truncate with "+N more" instead of growing forever
 
 const COLORS = {
+  // Gold, silver and bronze are for the podium only (plus the logo's dot).
   gold: "#ffc233",
   goldLight: "#ffe066",
   goldDeep: "#ffcc33",
@@ -49,13 +50,15 @@ const COLORS = {
   bronzeLight: "#f3cd9e",
   bronzeDeep: "#d6924f",
   white: "#ffffff",
-  muted: "#d8cdbe",
-  mutedDim: "#a9957a",
-  good: "#5fd068",
+  // Same navy-and-green look as the app (see :root in styles.css).
+  accent: "#2ee57f",
+  muted: "#b4c1d9",
+  mutedDim: "#8a9bb8",
+  good: "#2ee57f",
   bad: "#ff6b6b",
-  cardFill: "rgba(255,255,255,0.07)",
-  cardBorder: "rgba(255,255,255,0.14)",
-  divider: "rgba(255,255,255,0.10)",
+  cardFill: "rgba(24,35,59,0.88)",
+  cardBorder: "#243253",
+  divider: "rgba(147,163,191,0.18)",
 };
 
 const FONT = '"Inter", sans-serif';
@@ -184,7 +187,7 @@ function drawAvatar(
   if (image) {
     // Just a shadow-casting fill here -- the image itself (drawn below, once
     // the shadow is no longer active) fully covers it.
-    ctx.fillStyle = "#000000";
+    ctx.fillStyle = "#0b1220";
   } else {
     const grad = ctx.createLinearGradient(cx - r, cy - r, cx + r, cy + r);
     grad.addColorStop(0, gradStops[0]);
@@ -338,10 +341,19 @@ function drawContent(
 
   ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";
-  ctx.font = `700 28px ${FONT}`;
+  // The app's wordmark: white name, gold dot.
+  ctx.font = `800 36px ${FONT}`;
+  const wordmark = "Smashilog";
+  const wordmarkW = ctx.measureText(wordmark).width;
+  const dotW = ctx.measureText(".").width;
+  const wordmarkX = WIDTH / 2 - (wordmarkW + dotW) / 2;
+  ctx.textAlign = "left";
+  ctx.fillStyle = COLORS.white;
+  ctx.fillText(wordmark, wordmarkX, y);
   ctx.fillStyle = COLORS.gold;
-  ctx.fillText("🏸  S M A S H I L O G", WIDTH / 2, y);
-  y += 52;
+  ctx.fillText(".", wordmarkX + wordmarkW, y);
+  ctx.textAlign = "center";
+  y += 66;
 
   ctx.font = `700 58px ${FONT}`;
   ctx.fillStyle = COLORS.white;
@@ -415,7 +427,7 @@ function drawContent(
     let ry = y + padTop + headerH * 0.72;
     ctx.textAlign = "left";
     ctx.font = `700 27px ${FONT}`;
-    ctx.fillStyle = COLORS.goldLight;
+    ctx.fillStyle = COLORS.accent;
     ctx.fillText("🏆 SESSION AWARDS", MARGIN + padX, ry);
     ry += headerH + 2;
 
@@ -440,7 +452,7 @@ function drawContent(
   if (rest.length > 0) {
     ctx.textAlign = "left";
     ctx.font = `700 25px ${FONT}`;
-    ctx.fillStyle = COLORS.gold;
+    ctx.fillStyle = COLORS.accent;
     const allShown = rest.length <= MAX_REST_ROWS;
     ctx.fillText(allShown ? "FULL STANDINGS" : "STANDINGS", MARGIN, y);
     y += 18;
@@ -529,14 +541,20 @@ function drawContent(
 }
 
 function paintBackground(ctx: CanvasRenderingContext2D, width: number, height: number) {
-  // Same black-center-to-dark-brown-edge vignette as .rank-badge-card in
-  // styles.css, per the app's established "achievement card" look.
+  // Navy, a little lighter behind the title and darker toward the edges, with
+  // a faint green glow at the top -- the same navy-and-green as the app.
   const bgGrad = ctx.createRadialGradient(width / 2, height * 0.3, 60, width / 2, height * 0.3, height * 1.05);
-  bgGrad.addColorStop(0, "#000000");
-  bgGrad.addColorStop(0.4, "#000000");
-  bgGrad.addColorStop(0.78, "#2a1709");
-  bgGrad.addColorStop(1, "#3c230f");
+  bgGrad.addColorStop(0, "#16233d");
+  bgGrad.addColorStop(0.4, "#0e1830");
+  bgGrad.addColorStop(0.78, "#0a1222");
+  bgGrad.addColorStop(1, "#070c17");
   ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, width, height);
+
+  const glow = ctx.createRadialGradient(width / 2, 0, 0, width / 2, 0, width * 0.7);
+  glow.addColorStop(0, "rgba(46,229,127,0.14)");
+  glow.addColorStop(1, "rgba(46,229,127,0)");
+  ctx.fillStyle = glow;
   ctx.fillRect(0, 0, width, height);
 }
 

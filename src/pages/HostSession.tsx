@@ -26,6 +26,7 @@ import { CourtHead, OpenCourt, VsDivider } from "../ui/CourtParts";
 import { courtSlots, eligiblePoolFor } from "../ui/live";
 import { QueueMatchCard, QueueTeams, WaitingChips } from "../ui/QueueParts";
 import { RankLegend, RankRow } from "../ui/RankRows";
+import { HistoryItem } from "../ui/HistoryParts";
 // Pure, dependency-free scoring module shared with the Worker's matchmaking
 // generator (worker/lib/regenerate.ts) -- imported directly rather than
 // duplicated so the grade shown here always matches the logic that actually
@@ -1497,13 +1498,9 @@ function PlayerMatchHistory({
 
   return (
     <div>
-      <button
-        type="button"
-        className="back-link"
-        style={{ background: "none", border: "none", padding: 0, cursor: "pointer", font: "inherit" }}
-        onClick={onBack}
-      >
-        ← Back to ranking
+      <button type="button" className="back-link" onClick={onBack}>
+        <Icon name="chevron-left" size={16} />
+        Back to ranking
       </button>
 
       <div className="card row" style={{ gap: 10, marginBottom: 16 }}>
@@ -1519,24 +1516,9 @@ function PlayerMatchHistory({
       </div>
 
       <div className="stack">
-        {matches.map((m) => {
-          const onTeam1 = m.team1.includes(player.id);
-          return (
-            <div key={m.id} className="match-card">
-              <div className="court-label">
-                {m.courtLabel} · {new Date(m.endedAt ?? m.startedAt).toLocaleString()}
-              </div>
-              <div className="team-row" style={{ fontWeight: onTeam1 ? 700 : undefined }}>
-                <span>{m.team1.map((id) => playerById(id)?.name ?? "?").join(" & ")}</span>
-                <strong>{m.score1}</strong>
-              </div>
-              <div className="team-row" style={{ fontWeight: !onTeam1 ? 700 : undefined }}>
-                <span>{m.team2.map((id) => playerById(id)?.name ?? "?").join(" & ")}</span>
-                <strong>{m.score2}</strong>
-              </div>
-            </div>
-          );
-        })}
+        {matches.map((m) => (
+          <HistoryItem key={m.id} match={m} playerById={playerById} focusId={player.id} />
+        ))}
         {matches.length === 0 && <div className="empty-state">No completed matches yet.</div>}
       </div>
     </div>
@@ -1579,12 +1561,15 @@ function HistoryTab({
 
   return (
     <div>
-      <input
-        placeholder="Search history by player…"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        style={{ marginBottom: 12 }}
-      />
+      <div className="search-field">
+        <Icon name="search" size={18} />
+        <input
+          placeholder="Search history by player…"
+          aria-label="Search history by player"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </div>
       {note && (
         <div className="caption" style={{ marginBottom: 12 }}>{note}</div>
       )}
@@ -1662,45 +1647,62 @@ function HistoryCard({
     }
   }
 
+  const teamName = (ids: number[]) => ids.map((id) => playerById(id)?.name ?? "?").join(" & ");
+
+  // The card stays open while a score is being edited or an error is showing,
+  // so those can't be tucked away by accident.
   return (
-    <div className="match-card">
-      <div className="court-label">
-        {match.courtLabel} · {new Date(match.endedAt ?? match.startedAt).toLocaleString()}
-      </div>
-      <div className="team-row">
-        <span>{match.team1.map((id) => playerById(id)?.name ?? "?").join(" & ")}</span>
-        {editing ? (
-          <input className="score-input" value={score1} onChange={(e) => setScore1(e.target.value)} inputMode="numeric" />
-        ) : (
-          <strong>{match.score1}</strong>
-        )}
-      </div>
-      <div className="team-row">
-        <span>{match.team2.map((id) => playerById(id)?.name ?? "?").join(" & ")}</span>
-        {editing ? (
-          <input className="score-input" value={score2} onChange={(e) => setScore2(e.target.value)} inputMode="numeric" />
-        ) : (
-          <strong>{match.score2}</strong>
-        )}
-      </div>
-      {error && <div className="error-text" style={{ marginTop: 6 }}>{error}</div>}
-      {editing ? (
-        <div className="row" style={{ marginTop: 10 }}>
-          <button className="btn small primary" onClick={save}>
-            Save
-          </button>
-        </div>
-      ) : (
-        <div className="row" style={{ marginTop: 10 }}>
-          <button className="btn small" onClick={() => setEditing(true)}>
-            Edit score
-          </button>
-          <button className="btn small danger" onClick={remove} disabled={deleting}>
-            {deleting ? "Deleting…" : "Delete"}
-          </button>
-        </div>
-      )}
-    </div>
+    <HistoryItem
+      match={match}
+      playerById={playerById}
+      forceOpen={editing || !!error}
+      scoreSlot1={
+        editing ? (
+          <input
+            className="score-input"
+            aria-label={`Score for ${teamName(match.team1)}`}
+            value={score1}
+            onChange={(e) => setScore1(e.target.value)}
+            inputMode="numeric"
+          />
+        ) : undefined
+      }
+      scoreSlot2={
+        editing ? (
+          <input
+            className="score-input"
+            aria-label={`Score for ${teamName(match.team2)}`}
+            value={score2}
+            onChange={(e) => setScore2(e.target.value)}
+            inputMode="numeric"
+          />
+        ) : undefined
+      }
+      footer={
+        <>
+          {error && <div className="error-text" style={{ marginTop: 6 }}>{error}</div>}
+          {editing ? (
+            <div className="court-actions">
+              <button className="btn primary with-icon" onClick={save}>
+                <Icon name="check" size={18} />
+                Save
+              </button>
+            </div>
+          ) : (
+            <div className="court-actions">
+              <button className="btn with-icon" onClick={() => setEditing(true)}>
+                <Icon name="pencil" size={18} />
+                Edit score
+              </button>
+              <button className="btn danger with-icon" onClick={remove} disabled={deleting}>
+                <Icon name="trash" size={18} />
+                {deleting ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+          )}
+        </>
+      }
+    />
   );
 }
 

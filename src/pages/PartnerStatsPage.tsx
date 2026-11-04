@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
+import { Icon } from "../ui/Icon";
 import { Loading } from "../loading";
 import { RecordRow, OpponentLevelStrip, type PartnerStatsData } from "../partnerStats";
 
@@ -28,7 +29,8 @@ export default function PartnerStatsPage() {
   return (
     <div className="screen">
       <Link className="back-link" to="/me">
-        ← Back
+        <Icon name="chevron-left" size={16} />
+        Back
       </Link>
       <div className="brand">
         <h1>Partner &amp; opponent stats</h1>

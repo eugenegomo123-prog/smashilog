@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, type Session } from "../api";
+import { Icon } from "../ui/Icon";
+import { SessionRow } from "../ui/SessionRow";
 
 export default function HostSessions() {
   const navigate = useNavigate();
@@ -42,7 +44,8 @@ export default function HostSessions() {
   return (
     <div className="screen">
       <Link className="back-link" to="/">
-        ← Back
+        <Icon name="chevron-left" size={16} />
+        Back
       </Link>
       <div className="brand">
         <h1>Host Sessions</h1>
@@ -57,16 +60,37 @@ export default function HostSessions() {
           </div>
           <div>
             <label>Number of courts</label>
-            <input
-              type="number"
-              min={1}
-              max={20}
-              value={courtCount}
-              onChange={(e) => setCourtCount(Number(e.target.value))}
-            />
+            <div className="stepper">
+              <button
+                type="button"
+                className="icon-btn lg"
+                aria-label="Fewer courts"
+                disabled={courtCount <= 1}
+                onClick={() => setCourtCount(Math.max(1, courtCount - 1))}
+              >
+                <Icon name="minus" size={20} />
+              </button>
+              <input
+                type="number"
+                min={1}
+                max={20}
+                inputMode="numeric"
+                value={courtCount}
+                onChange={(e) => setCourtCount(Number(e.target.value))}
+              />
+              <button
+                type="button"
+                className="icon-btn lg"
+                aria-label="More courts"
+                disabled={courtCount >= 20}
+                onClick={() => setCourtCount(Math.min(20, courtCount + 1))}
+              >
+                <Icon name="plus" size={20} />
+              </button>
+            </div>
           </div>
           {error && <div className="error-text">{error}</div>}
-          <button className="btn primary" type="submit" disabled={creating || !name.trim()}>
+          <button className="btn primary block" type="submit" disabled={creating || !name.trim()}>
             {creating ? "Creating…" : "Create session"}
           </button>
         </form>
@@ -75,7 +99,13 @@ export default function HostSessions() {
       <h3 className="section-title" style={{ marginTop: 28, marginBottom: 8 }}>Active</h3>
       <div className="stack">
         {active.map((s) => (
-          <SessionRow key={s.id} session={s} onClick={() => navigate(`/host/sessions/${s.id}`)} />
+          <SessionRow
+            key={s.id}
+            title={s.name}
+            sub={`${s.courtCount} courts`}
+            status={s.status === "active" ? "active" : "ended"}
+            onClick={() => navigate(`/host/sessions/${s.id}`)}
+          />
         ))}
         {sessions && active.length === 0 && <div className="empty-state">No active sessions yet.</div>}
       </div>
@@ -85,23 +115,17 @@ export default function HostSessions() {
           <h3 className="section-title" style={{ marginTop: 28, marginBottom: 8 }}>Ended</h3>
           <div className="stack">
             {ended.map((s) => (
-              <SessionRow key={s.id} session={s} onClick={() => navigate(`/host/sessions/${s.id}`)} />
+              <SessionRow
+                key={s.id}
+                title={s.name}
+                sub={`${s.courtCount} courts`}
+                status="ended"
+                onClick={() => navigate(`/host/sessions/${s.id}`)}
+              />
             ))}
           </div>
         </>
       )}
-    </div>
-  );
-}
-
-function SessionRow({ session, onClick }: { session: Session; onClick: () => void }) {
-  return (
-    <div className="card row between" onClick={onClick} style={{ cursor: "pointer" }}>
-      <div>
-        <div style={{ fontWeight: 600 }}>{session.name}</div>
-        <div className="caption">{session.courtCount} courts</div>
-      </div>
-      <span className={`badge ${session.status === "active" ? "active" : "ended"}`}>{session.status}</span>
     </div>
   );
 }

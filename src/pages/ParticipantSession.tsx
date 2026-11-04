@@ -26,6 +26,7 @@ import { CourtHead, OpenCourt } from "../ui/CourtParts";
 import { courtSlots, eligiblePoolFor } from "../ui/live";
 import { QueueMatchCard, QueueTeams, WaitingChips } from "../ui/QueueParts";
 import { RankLegend, RankRow } from "../ui/RankRows";
+import { HistoryItem } from "../ui/HistoryParts";
 
 type Tab = "home" | "queue" | "ranking" | "history" | "me";
 
@@ -1100,13 +1101,9 @@ function PlayerMatchHistory({
 
   return (
     <div>
-      <button
-        type="button"
-        className="back-link"
-        style={{ background: "none", border: "none", padding: 0, cursor: "pointer", font: "inherit" }}
-        onClick={onBack}
-      >
-        ← Back to ranking
+      <button type="button" className="back-link" onClick={onBack}>
+        <Icon name="chevron-left" size={16} />
+        Back to ranking
       </button>
 
       <div className="card row" style={{ gap: 10, marginBottom: 16 }}>
@@ -1122,24 +1119,9 @@ function PlayerMatchHistory({
       </div>
 
       <div className="stack">
-        {matches.map((m) => {
-          const onTeam1 = m.team1.includes(player.id);
-          return (
-            <div key={m.id} className="match-card">
-              <div className="court-label">
-                {m.courtLabel} · {new Date(m.endedAt ?? m.startedAt).toLocaleString()}
-              </div>
-              <div className="team-row" style={{ fontWeight: onTeam1 ? 700 : undefined }}>
-                <span>{m.team1.map((id) => playerById(id)?.name ?? "?").join(" & ")}</span>
-                <strong>{m.score1}</strong>
-              </div>
-              <div className="team-row" style={{ fontWeight: !onTeam1 ? 700 : undefined }}>
-                <span>{m.team2.map((id) => playerById(id)?.name ?? "?").join(" & ")}</span>
-                <strong>{m.score2}</strong>
-              </div>
-            </div>
-          );
-        })}
+        {matches.map((m) => (
+          <HistoryItem key={m.id} match={m} playerById={playerById} focusId={player.id} />
+        ))}
         {matches.length === 0 && <div className="empty-state">No completed matches yet.</div>}
       </div>
     </div>
@@ -1174,23 +1156,13 @@ function HistoryTab({
         </div>
       )}
       <div className="stack">
-      {filtered.map((m) => (
-        <div key={m.id} className="match-card">
-          <div className="court-label">{m.courtLabel} · {new Date(m.endedAt ?? m.startedAt).toLocaleString()}</div>
-          <div className="team-row">
-            <span>{m.team1.map((id) => playerById(id)?.name ?? "?").join(" & ")}</span>
-            <strong>{m.score1}</strong>
-          </div>
-          <div className="team-row">
-            <span>{m.team2.map((id) => playerById(id)?.name ?? "?").join(" & ")}</span>
-            <strong>{m.score2}</strong>
-          </div>
-        </div>
-      ))}
-      {history.length === 0 && <div className="empty-state">No completed matches yet.</div>}
-      {history.length > 0 && filtered.length === 0 && (
-        <div className="empty-state">No matches yet where you played.</div>
-      )}
+        {filtered.map((m) => (
+          <HistoryItem key={m.id} match={m} playerById={playerById} focusId={myId} />
+        ))}
+        {history.length === 0 && <div className="empty-state">No completed matches yet.</div>}
+        {history.length > 0 && filtered.length === 0 && (
+          <div className="empty-state">No matches yet where you played.</div>
+        )}
       </div>
     </div>
   );

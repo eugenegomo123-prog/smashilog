@@ -8,6 +8,7 @@ import { Loading } from "../loading";
 import { BottomNav, type NavItem } from "../ui/BottomNav";
 import { Icon } from "../ui/Icon";
 import { RankLegend, RankRow } from "../ui/RankRows";
+import { SessionRow } from "../ui/SessionRow";
 import { OverallRecordCard, type OverallRecordStats } from "../overallRecord";
 import { PartnerStatsPreview, type PartnerStatsData } from "../partnerStats";
 
@@ -670,23 +671,18 @@ function HistoryTab() {
   return (
     <div className="stack">
       {history.map((h) => (
-        <div
+        <SessionRow
           key={h.sessionId}
-          className="card row between"
-          style={{ cursor: "pointer" }}
+          title={h.sessionName}
+          lead={
+            <span className="sess-rank">
+              <b>{h.rank > 0 ? `#${h.rank}` : "—"}</b>
+              {h.rank > 0 && <small>of {h.totalRanked}</small>}
+            </span>
+          }
+          sub={`${new Date(h.endedAt ?? h.createdAt).toLocaleDateString()} · ${h.wins}W-${h.losses}L · ${h.gamesPlayed} games · ${h.pointsFor} pts`}
           onClick={() => navigate(`/session/${h.sessionId}`)}
-        >
-          <div>
-            <div style={{ fontWeight: 600 }}>{h.sessionName}</div>
-            <div className="caption-xs">
-              {new Date(h.endedAt ?? h.createdAt).toLocaleDateString()} · {h.gamesPlayed} games · {h.pointsFor} pts
-            </div>
-          </div>
-          <div style={{ textAlign: "right" }}>
-            <div style={{ fontWeight: 700 }}>{h.rank > 0 ? `#${h.rank}` : "—"}</div>
-            {h.rank > 0 && <div style={{ fontSize: 11, color: "var(--muted)" }}>of {h.totalRanked}</div>}
-          </div>
-        </div>
+        />
       ))}
     </div>
   );
@@ -996,16 +992,17 @@ function AccountTab({ onRenamed }: { onRenamed: () => void }) {
       </div>
 
       <button
-        className="btn danger"
+        className="btn danger block with-icon"
         onClick={() => {
           api.clearPlayerSession();
           navigate("/");
         }}
       >
+        <Icon name="logout" size={18} />
         Log out
       </button>
 
-      <div className="card">
+      <div className="card danger-zone">
         <label>Delete account</label>
         <div className="subtitle" style={{ marginTop: 2, marginBottom: 10 }}>
           Your login goes away for good. Past matches and scores stay in session history, same as a guest

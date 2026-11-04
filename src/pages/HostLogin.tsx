@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
+import { Icon } from "../ui/Icon";
 
 export default function HostLogin() {
   const navigate = useNavigate();
@@ -30,13 +31,14 @@ export default function HostLogin() {
   return (
     <div className="screen">
       <Link className="back-link" to="/">
-        ← Back
+        <Icon name="chevron-left" size={16} />
+        Back
       </Link>
       <div className="brand">
         <h1>Host Login</h1>
       </div>
       <p className="subtitle">Enter the host password to manage sessions.</p>
-      <form className="stack" onSubmit={submit}>
+      <form className="stack card auth-card" onSubmit={submit}>
         <div>
           <label>Password</label>
           <input
@@ -48,7 +50,7 @@ export default function HostLogin() {
           />
         </div>
         {error && <div className="error-text">{error}</div>}
-        <button className="btn primary" type="submit" disabled={loading || !password}>
+        <button className="btn primary block" type="submit" disabled={loading || !password}>
           {loading ? "Checking…" : "Continue"}
         </button>
       </form>

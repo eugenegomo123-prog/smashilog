@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, LEVELS, LEVEL_ICON, LEVEL_LABEL, type Level, type Player, type Session } from "../api";
 import { Loading } from "../loading";
+import { Icon } from "../ui/Icon";
+import { SessionRow } from "../ui/SessionRow";
 
 function playerKey(sessionId: number) {
   return `smashilog_player_${sessionId}`;
@@ -75,12 +77,13 @@ export default function ParticipantJoin() {
   }
 
   const backTo = isLoggedIn ? "/me" : "/join";
-  const backLabel = isLoggedIn ? "← My account" : "← All sessions";
+  const backLabel = isLoggedIn ? "My account" : "All sessions";
 
   if (requested) {
     return (
       <div className="screen">
         <Link className="back-link" to={backTo}>
+          <Icon name="chevron-left" size={16} />
           {backLabel}
         </Link>
         <div className="brand">
@@ -100,7 +103,8 @@ export default function ParticipantJoin() {
     return (
       <div className="screen">
         <Link className="back-link" to="/me">
-          ← My account
+          <Icon name="chevron-left" size={16} />
+          My account
         </Link>
         <div className="brand">
           <h1>{session.name}</h1>
@@ -121,7 +125,7 @@ export default function ParticipantJoin() {
           </div>
         )}
         <button
-          className="btn primary"
+          className="btn primary block"
           style={{ marginTop: 16 }}
           onClick={requestToJoinAsAccount}
           disabled={accountPlayer === undefined || accountLevel === null}
@@ -135,7 +139,8 @@ export default function ParticipantJoin() {
   return (
     <div className="screen">
       <Link className="back-link" to="/join">
-        ← All sessions
+        <Icon name="chevron-left" size={16} />
+        All sessions
       </Link>
       <div className="brand">
         <h1>{session.name}</h1>
@@ -153,9 +158,12 @@ export default function ParticipantJoin() {
       {mode === "pick" ? (
         <div className="stack">
           {approvedRoster.map((p) => (
-            <button key={p.id} className="big-btn ghost" onClick={() => pickName(p)}>
-              {p.name}
-            </button>
+            <SessionRow
+              key={p.id}
+              title={p.name}
+              lead={<span className="sess-level">{LEVEL_ICON[p.level]}</span>}
+              onClick={() => pickName(p)}
+            />
           ))}
           {approvedRoster.length === 0 && <div className="empty-state">No approved players yet — request to join instead.</div>}
         </div>
@@ -176,7 +184,7 @@ export default function ParticipantJoin() {
             </select>
           </div>
           {error && <div className="error-text">{error}</div>}
-          <button className="btn primary" type="submit" disabled={!name.trim()}>
+          <button className="btn primary block" type="submit" disabled={!name.trim()}>
             Send request
           </button>
         </form>

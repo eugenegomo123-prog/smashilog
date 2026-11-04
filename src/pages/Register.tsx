@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api";
+import { Icon } from "../ui/Icon";
 
 export default function Register() {
   const navigate = useNavigate();
@@ -20,7 +21,8 @@ export default function Register() {
     return (
       <div className="screen">
         <Link className="back-link" to="/">
-          ← Back
+          <Icon name="chevron-left" size={16} />
+          Back
         </Link>
         <div className="brand">
           <h1>Create account</h1>
@@ -58,13 +60,14 @@ export default function Register() {
   return (
     <div className="screen">
       <Link className="back-link" to="/">
-        ← Back
+        <Icon name="chevron-left" size={16} />
+        Back
       </Link>
       <div className="brand">
         <h1>Create account</h1>
       </div>
       <p className="subtitle">Pick a username and password — separate from any guest name you've used before.</p>
-      <form className="stack" onSubmit={submit}>
+      <form className="stack card auth-card" onSubmit={submit}>
         <div>
           <label>Username</label>
           <input autoFocus value={username} onChange={(e) => setUsername(e.target.value)} placeholder="3-30 characters" />
@@ -78,7 +81,7 @@ export default function Register() {
           <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
         </div>
         {error && <div className="error-text">{error}</div>}
-        <button className="btn primary" type="submit" disabled={loading || !username || !password}>
+        <button className="btn primary block" type="submit" disabled={loading || !username || !password}>
           {loading ? "Creating…" : "Create account"}
         </button>
       </form>

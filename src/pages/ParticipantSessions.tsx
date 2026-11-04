@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, type Session } from "../api";
+import { Icon } from "../ui/Icon";
+import { SessionRow } from "../ui/SessionRow";
 
 export default function ParticipantSessions() {
   const navigate = useNavigate();
@@ -16,7 +18,8 @@ export default function ParticipantSessions() {
   return (
     <div className="screen">
       <Link className="back-link" to="/">
-        ← Back
+        <Icon name="chevron-left" size={16} />
+        Back
       </Link>
       <div className="brand">
         <h1>Join a Session</h1>
@@ -26,10 +29,7 @@ export default function ParticipantSessions() {
       <h3 className="section-title">Active</h3>
       <div className="stack">
         {active.map((s) => (
-          <div key={s.id} className="card row between" style={{ cursor: "pointer" }} onClick={() => navigate(`/join/${s.id}`)}>
-            <div style={{ fontWeight: 600 }}>{s.name}</div>
-            <span className="badge active">active</span>
-          </div>
+          <SessionRow key={s.id} title={s.name} status="active" onClick={() => navigate(`/join/${s.id}`)} />
         ))}
         {sessions && active.length === 0 && <div className="empty-state">No active sessions right now.</div>}
       </div>
@@ -39,10 +39,7 @@ export default function ParticipantSessions() {
           <h3 className="section-title" style={{ marginTop: 24 }}>Past</h3>
           <div className="stack">
             {ended.map((s) => (
-              <div key={s.id} className="card row between" style={{ cursor: "pointer" }} onClick={() => navigate(`/session/${s.id}`)}>
-                <div style={{ fontWeight: 600 }}>{s.name}</div>
-                <span className="badge ended">ended</span>
-              </div>
+              <SessionRow key={s.id} title={s.name} status="ended" onClick={() => navigate(`/session/${s.id}`)} />
             ))}
           </div>
         </>
