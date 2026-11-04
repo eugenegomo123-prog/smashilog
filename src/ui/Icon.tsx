@@ -117,6 +117,7 @@ const ICONS = {
   ),
   download: <path d="M12 3v12M8 11l4 4 4-4M5 21h14" />,
   "trending-up": <path d="m3 17 6-6 4 4 8-8M15 7h6v6" />,
+  "bar-chart": <path d="M18 20V10M12 20V4M6 20v-6" />,
   moon: <path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z" />,
   smile: (
     <>

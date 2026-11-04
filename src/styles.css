@@ -525,23 +525,28 @@ label {
   text-decoration: none;
   font-size: 14px;
   margin-bottom: 16px;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-weight: 600;
 }
 
+/* Bottom tab bar (src/ui/BottomNav.tsx). Fixed to the bottom, with room under
+   it for a phone's gesture bar (safe-area padding). Each tab is an icon over a
+   label, 56px tall for easy thumb taps. */
 .tabs {
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
   display: flex;
-  background: var(--panel);
+  background: var(--bg);
   border-top: 1px solid var(--border);
   max-width: 560px;
   margin: 0 auto;
-  padding-bottom: env(safe-area-inset-bottom);
-  padding-left: env(safe-area-inset-left);
-  padding-right: env(safe-area-inset-right);
+  padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
+  padding-left: calc(6px + env(safe-area-inset-left));
+  padding-right: calc(6px + env(safe-area-inset-right));
   box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35);
   z-index: 10;
 }
@@ -549,10 +554,12 @@ label {
 .tabs button {
   position: relative;
   flex: 1;
-  min-height: 52px;
-  padding: 12px 4px 10px;
+  min-width: 0;
+  min-height: 56px;
+  padding: 6px 2px;
   background: none;
   border: none;
+  border-radius: 12px;
   color: var(--muted);
   font-size: 11px;
   font-weight: 600;
@@ -562,14 +569,17 @@ label {
   justify-content: center;
   gap: 4px;
   cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease, transform 0.08s ease;
 }
 
-/* Tab with the icon stacked above the label (HostSession.tsx's TabButton).
-   The label never wraps, and an optional count badge (pending join
-   requests) sits on the icon's top-right corner. */
-.tabs button .tab-icon {
-  font-size: 18px;
-  line-height: 1;
+.tabs button:active {
+  transform: scale(0.94);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.tabs button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .tabs button .tab-label {
@@ -577,28 +587,146 @@ label {
   white-space: nowrap;
 }
 
+/* Count badge on the icon's top-right corner (e.g. pending join requests). */
 .tabs button .tab-badge {
   position: absolute;
-  top: 4px;
+  top: 2px;
   left: calc(50% + 6px);
-  min-width: 16px;
-  height: 16px;
+  min-width: 17px;
+  height: 17px;
   padding: 0 4px;
   box-sizing: border-box;
   border-radius: 999px;
   background: var(--bad);
   color: #2a0808;
   font-size: 10px;
-  font-weight: 700;
-  line-height: 16px;
+  font-weight: 800;
+  line-height: 17px;
   text-align: center;
 }
 
-/* The active tab is green text plus a green bar along the top edge, so it
-   stays obvious even for someone who can't tell the two tones apart. */
+/* The active tab is green (icon and label) plus a short green bar on the top
+   edge, so it stays obvious even for someone who can't tell colours apart. */
 .tabs button.active {
-  color: var(--accent-dark);
-  box-shadow: inset 0 3px 0 var(--accent-2);
+  color: var(--accent);
+}
+
+.tabs button.active::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  width: 26px;
+  height: 3px;
+  margin-left: -13px;
+  border-radius: 0 0 4px 4px;
+  background: var(--accent);
+}
+
+/* Title row of a session page (src/ui/SessionHeader.tsx). Builds on .brand:
+   the name can wrap to a second line, then is cut off with an ellipsis. */
+.session-head {
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.session-head h1 {
+  font-size: 26px;
+  line-height: 1.15;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow-wrap: anywhere;
+}
+
+.live-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  padding: 7px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  background: var(--inactive-bg);
+}
+
+.live-pill i {
+  position: relative;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.live-pill.live {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: rgba(46, 229, 127, 0.35);
+}
+
+/* The one looping animation in the app: a soft ring that fades outward from
+   the LIVE dot. Only transform and opacity change, so it costs almost nothing,
+   and the reduced-motion block at the bottom of this file stops it. */
+.live-pill.live i::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: live-ping 1.8s ease-out infinite;
+}
+
+@keyframes live-ping {
+  0% { transform: scale(1); opacity: 0.6; }
+  70%, 100% { transform: scale(3); opacity: 0; }
+}
+
+/* Square 44px icon button (the host's settings gear). */
+.icon-btn {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-radius: 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  cursor: pointer;
+  transition: transform 0.08s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.icon-btn:active {
+  transform: scale(0.94);
+}
+
+.icon-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.icon-btn[aria-pressed="true"] {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* Wraps whichever tab is showing. It's keyed by the tab, so it remounts (and
+   fades in) only when someone switches tabs -- NOT on the 4-5 second data
+   refresh, which keeps the same panel. */
+.tab-panel {
+  animation: tab-in 0.18s ease-out;
+}
+
+@keyframes tab-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
 }
 
 .badge {

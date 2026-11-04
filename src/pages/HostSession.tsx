@@ -17,6 +17,9 @@ import { shareResultsImage } from "../shareImage";
 import { RankAvatar } from "../rankAvatar";
 import { alertDialog, confirmDialog, promptDialog } from "../dialogs";
 import { Loading } from "../loading";
+import { Icon } from "../ui/Icon";
+import { BottomNav, type NavItem } from "../ui/BottomNav";
+import { SessionHeader } from "../ui/SessionHeader";
 // Pure, dependency-free scoring module shared with the Worker's matchmaking
 // generator (worker/lib/regenerate.ts) -- imported directly rather than
 // duplicated so the grade shown here always matches the logic that actually
@@ -282,7 +285,9 @@ export default function HostSession() {
   const { id } = useParams();
   const sessionId = Number(id);
   const navigate = useNavigate();
-  const [tab, setTab] = useState<Tab>("players");
+  // Opens on the Live tab (the courts). Pending join requests still show as a
+  // red count on the Players tab.
+  const [tab, setTab] = useState<Tab>("courts");
   const [session, setSession] = useState<Session | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
   const [matchData, setMatchData] = useState<{ ongoing: Match[]; history: Match[]; suggested: Match[]; queued: Match[] }>({
@@ -325,20 +330,53 @@ export default function HostSession() {
 
   const pending = players.filter((p) => !p.approved);
 
+  // Settings isn't a tab: it opens from the gear in the header (see above).
+  const navItems: NavItem<Exclude<Tab, "settings">>[] = [
+    { id: "courts", label: "Live", icon: "home" },
+    { id: "queue", label: "Queue", icon: "list" },
+    { id: "players", label: "Players", icon: "users", badge: pending.length, badgeLabel: `${pending.length} waiting for approval` },
+    { id: "ranking", label: "Ranking", icon: "trophy" },
+    { id: "history", label: "History", icon: "history" },
+  ];
+
   return (
     <div className="screen">
-      <Link className="back-link" to="/host/sessions">
-        ← All sessions
+      {/* On the Settings page (opened from the gear below) "back" returns to
+          the Live tab instead of leaving the session. */}
+      <Link
+        className="back-link"
+        to="/host/sessions"
+        onClick={(e) => {
+          if (tab === "settings") {
+            e.preventDefault();
+            setTab("courts");
+          }
+        }}
+      >
+        <Icon name="chevron-left" size={16} />
+        {tab === "settings" ? "Back to Live" : "All sessions"}
       </Link>
-      <div className="brand row between">
-        <h1>{session.name}</h1>
-        <span className={`badge ${session.status === "active" ? "active" : "ended"}`}>{session.status}</span>
-      </div>
+      <SessionHeader
+        name={session.name}
+        status={session.status}
+        action={
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="Session settings"
+            aria-pressed={tab === "settings"}
+            onClick={() => setTab(tab === "settings" ? "courts" : "settings")}
+          >
+            <Icon name="settings" />
+          </button>
+        }
+      />
       <p className="subtitle">
         {session.courtCount} courts · {players.filter((p) => p.approved).length} players
       </p>
       {error && <div className="error-text">{error}</div>}
 
+      <div key={tab} className="tab-panel">
       {tab === "players" && (
         <PlayersTab
           session={session}
@@ -380,45 +418,10 @@ export default function HostSession() {
       )}
       {tab === "history" && <HistoryTab history={matchData.history} playerById={playerById} onChanged={load} />}
       {tab === "settings" && <SettingsTab session={session} onChanged={load} />}
+      </div>
 
-      <nav className="tabs">
-        <TabButton active={tab === "players"} onClick={() => setTab("players")} icon="🧑‍🤝‍🧑" label="Players" badge={pending.length} />
-        <TabButton active={tab === "courts"} onClick={() => setTab("courts")} icon="🏸" label="Courts" />
-        <TabButton active={tab === "queue"} onClick={() => setTab("queue")} icon="⏳" label="Queue" />
-        <TabButton active={tab === "ranking"} onClick={() => setTab("ranking")} icon="🏆" label="Ranking" />
-        <TabButton active={tab === "history"} onClick={() => setTab("history")} icon="📜" label="History" />
-        <TabButton active={tab === "settings"} onClick={() => setTab("settings")} icon="⚙️" label="Settings" />
-      </nav>
+      <BottomNav items={navItems} active={tab === "settings" ? null : tab} onChange={setTab} />
     </div>
-  );
-}
-
-// Icon always on its own line above the label (instead of one "🏸 Courts"
-// string that wraps wherever it happens to run out of room) so all six host
-// tabs line up the same way on a narrow phone. A pending-request count sits
-// on the icon's corner rather than as a pill beside the label, which is what
-// used to push the Players tab onto a third line.
-function TabButton({
-  active,
-  onClick,
-  icon,
-  label,
-  badge,
-}: {
-  active: boolean;
-  onClick: () => void;
-  icon: string;
-  label: string;
-  badge?: number;
-}) {
-  return (
-    <button className={active ? "active" : ""} onClick={onClick} aria-current={active ? "page" : undefined}>
-      <span className="tab-icon" aria-hidden="true">
-        {icon}
-      </span>
-      <span className="tab-label">{label}</span>
-      {!!badge && <span className="tab-badge">{badge}</span>}
-    </button>
   );
 }
 

@@ -17,8 +17,11 @@ import { playerKey } from "./ParticipantJoin";
 import { shareResultsImage } from "../shareImage";
 import { RankAvatar } from "../rankAvatar";
 import { Loading } from "../loading";
+import { Icon } from "../ui/Icon";
+import { BottomNav, type NavItem } from "../ui/BottomNav";
+import { SessionHeader } from "../ui/SessionHeader";
 
-type Tab = "dashboard" | "ongoing" | "queue" | "ranking" | "history";
+type Tab = "home" | "queue" | "ranking" | "history" | "me";
 
 function timeAgo(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();
@@ -212,23 +215,23 @@ export default function ParticipantSession() {
   }, [sessionId]);
 
   const isEnded = session?.status === "ended";
-  const [tab, setTabState] = useState<Tab>(isEnded ? "ranking" : "dashboard");
+  const [tab, setTabState] = useState<Tab>(isEnded ? "ranking" : "home");
 
   // Tabs here are just local state, not routes -- there's nothing in browser
   // history for the phone/browser's own "back" action to undo, so by default
   // it falls straight through to whatever page was open before this session
   // (e.g. the account page), which reads as "back" taking you somewhere you
   // never navigated from. To fix that, the first time a tab switch leaves
-  // Dashboard we push one extra history entry; the next physical back press
+  // Home we push one extra history entry; the next physical back press
   // then has something of ours to consume, and the popstate handler below
-  // turns that into "switch back to Dashboard" instead of letting the browser
+  // turns that into "switch back to Home" instead of letting the browser
   // navigate the page away. Only one extra entry is ever pushed at a time
-  // (tracked by the ref below), so hopping between Courts/Queue/Ranking/
-  // History doesn't require more than one back press to get to Dashboard.
+  // (tracked by the ref below), so hopping between Queue/Ranking/History/Me
+  // doesn't require more than one back press to get to Home.
   const pushedTabGuardRef = useRef(false);
 
   function setTab(next: Tab) {
-    if (!isEnded && next !== "dashboard" && !pushedTabGuardRef.current) {
+    if (!isEnded && next !== "home" && !pushedTabGuardRef.current) {
       window.history.pushState({ smashilogTabGuard: true }, "");
       pushedTabGuardRef.current = true;
     }
@@ -238,9 +241,9 @@ export default function ParticipantSession() {
   useEffect(() => {
     function onPopState() {
       setTabState((current) => {
-        if (!isEnded && current !== "dashboard") {
+        if (!isEnded && current !== "home") {
           pushedTabGuardRef.current = false;
-          return "dashboard";
+          return "home";
         }
         return current;
       });
@@ -256,7 +259,7 @@ export default function ParticipantSession() {
   }, [sessionId]);
 
   useEffect(() => {
-    if (isEnded && (tab === "dashboard" || tab === "ongoing" || tab === "queue")) setTab("ranking");
+    if (isEnded && (tab === "home" || tab === "queue" || tab === "me")) setTab("ranking");
   }, [isEnded]);
 
   async function load() {
@@ -298,58 +301,73 @@ export default function ParticipantSession() {
 
   if (!session) return <Loading screen />;
 
+  // A finished session only has its results to look at.
+  const navItems: NavItem<Tab>[] = isEnded
+    ? [
+        { id: "ranking", label: "Ranking", icon: "trophy" },
+        { id: "history", label: "History", icon: "history" },
+      ]
+    : [
+        { id: "home", label: "Home", icon: "home" },
+        { id: "queue", label: "Queue", icon: "list" },
+        { id: "ranking", label: "Ranking", icon: "trophy" },
+        { id: "history", label: "History", icon: "history" },
+        { id: "me", label: "Me", icon: "user" },
+      ];
+
   return (
     <div className="screen">
-      {/* While the session is live and we're on any tab other than Dashboard,
-          this just returns to Dashboard instead of leaving the session --
+      {/* While the session is live and we're on any tab other than Home,
+          this just returns to Home instead of leaving the session --
           otherwise tapping "back" from, say, History dropped you all the way
           out to the account page, which read as "back" taking you somewhere
-          you didn't navigate from. Once already on Dashboard (or the session
-          has ended, so there's no Dashboard tab to return to), it behaves as
+          you didn't navigate from. Once already on Home (or the session
+          has ended, so there's no Home tab to return to), it behaves as
           a normal back link again. */}
       <Link
         className="back-link"
         to={api.isPlayerLoggedIn() ? (isEnded ? "/me?tab=history" : "/me") : "/join"}
         onClick={(e) => {
-          if (!isEnded && tab !== "dashboard") {
+          if (!isEnded && tab !== "home") {
             e.preventDefault();
-            setTab("dashboard");
+            setTab("home");
           }
         }}
       >
-        {!isEnded && tab !== "dashboard"
-          ? "← Dashboard"
+        <Icon name="chevron-left" size={16} />
+        {!isEnded && tab !== "home"
+          ? "Home"
           : api.isPlayerLoggedIn()
             ? isEnded
-              ? "← My history"
-              : "← My account"
-            : "← All sessions"}
+              ? "My history"
+              : "My account"
+            : "All sessions"}
       </Link>
       {statusPopup && <StatusPopup message={statusPopup} onDismiss={() => setStatusPopup(null)} />}
-      <div className="brand row between">
-        <h1>{session.name}</h1>
-        <span className={`badge ${session.status === "active" ? "active" : "ended"}`}>{session.status}</span>
-      </div>
+      <SessionHeader name={session.name} status={session.status} />
 
-      {tab === "dashboard" && me && (
-        <DashboardTab
-          player={me}
-          players={players}
-          ongoing={matchData.ongoing}
-          queued={matchData.queued}
-          courtLabels={session.courtLabels}
-          onChanged={load}
-        />
+      <div key={tab} className="tab-panel">
+      {tab === "home" && (
+        <div className="stack">
+          {me && (
+            <HomeStatus
+              player={me}
+              players={players}
+              ongoing={matchData.ongoing}
+              queued={matchData.queued}
+              courtLabels={session.courtLabels}
+            />
+          )}
+          <OngoingTab
+            matches={matchData.ongoing}
+            courtLabels={session.courtLabels}
+            playerById={playerById}
+            myId={myId}
+            topRankedIds={topRankedIds}
+          />
+        </div>
       )}
-      {tab === "ongoing" && (
-        <OngoingTab
-          matches={matchData.ongoing}
-          courtLabels={session.courtLabels}
-          playerById={playerById}
-          myId={myId}
-          topRankedIds={topRankedIds}
-        />
-      )}
+      {tab === "me" && me && <MeTab player={me} players={players} onChanged={load} />}
       {tab === "queue" && (
         <QueueTab queued={matchData.queued} playerById={playerById} myId={myId} topRankedIds={topRankedIds} />
       )}
@@ -362,14 +380,9 @@ export default function ParticipantSession() {
         />
       )}
       {tab === "history" && <HistoryTab history={matchData.history} playerById={playerById} myId={myId} />}
+      </div>
 
-      <nav className="tabs">
-        {!isEnded && <button className={tab === "dashboard" ? "active" : ""} onClick={() => setTab("dashboard")}>🏠 Dashboard</button>}
-        {!isEnded && <button className={tab === "ongoing" ? "active" : ""} onClick={() => setTab("ongoing")}>🏸 Courts</button>}
-        {!isEnded && <button className={tab === "queue" ? "active" : ""} onClick={() => setTab("queue")}>⏳ Queue</button>}
-        <button className={tab === "ranking" ? "active" : ""} onClick={() => setTab("ranking")}>🏆 Ranking</button>
-        <button className={tab === "history" ? "active" : ""} onClick={() => setTab("history")}>📜 History</button>
-      </nav>
+      <BottomNav items={navItems} active={tab} onChange={setTab} />
     </div>
   );
 }
@@ -434,7 +447,7 @@ function TeamColumn({
 }
 
 // The "2 circles stacked, VS in the middle, 2 more circles stacked, names
-// under each picture" matchup display -- shared by the Dashboard tab's "your
+// under each picture" matchup display -- shared by the Home tab's "your
 // match right now" card and the Courts tab's list of every match in play.
 function Matchup({
   team1,
@@ -614,34 +627,27 @@ function StatusCardBody({ status }: { status: MyStatus }) {
   }
 }
 
-function DashboardTab({
+// The top of the Home tab: where this player stands right now (on a court,
+// Nth in the queue, resting...) and, once they're on a court, their match.
+function HomeStatus({
   player,
   players,
   ongoing,
   queued,
   courtLabels,
-  onChanged,
 }: {
   player: Player;
   players: Player[];
   ongoing: Match[];
   queued: Match[];
   courtLabels: Court[];
-  onChanged: () => void;
 }) {
   const status = myCurrentStatus(player, ongoing, queued, courtLabels);
   const { bg, fg } = statusColors(status);
   const playerById = (id: number) => players.find((p) => p.id === id);
-  const others = players
-    .filter((p) => p.approved && p.id !== player.id)
-    .sort((a, b) => a.name.localeCompare(b.name));
 
   return (
-    <div className="stack">
-      <div className="card">
-        <div className="caption">Signed in as</div>
-        <div style={{ fontSize: 20, fontWeight: 700 }}>{player.name}</div>
-      </div>
+    <>
       <div className="card row between" style={{ background: bg, color: fg, alignItems: "center" }}>
         <StatusCardBody status={status} />
         <div className="level-pill" style={{ width: 44, height: 44, fontSize: 22 }} title={LEVEL_LABEL[player.level]}>{LEVEL_ICON[player.level]}</div>
@@ -652,6 +658,31 @@ function DashboardTab({
           <Matchup team1={status.match.team1} team2={status.match.team2} playerById={playerById} size={56} />
         </div>
       )}
+    </>
+  );
+}
+
+// The Me tab: who I'm signed in as, and my own settings for this session
+// (level read-only, status, preferred partner, playing mode).
+function MeTab({
+  player,
+  players,
+  onChanged,
+}: {
+  player: Player;
+  players: Player[];
+  onChanged: () => void;
+}) {
+  const others = players
+    .filter((p) => p.approved && p.id !== player.id)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  return (
+    <div className="stack">
+      <div className="card">
+        <div className="caption">Signed in as</div>
+        <div style={{ fontSize: 20, fontWeight: 700 }}>{player.name}</div>
+      </div>
       <div className="card">
         <label>My level</label>
         {/* Read-only once joined -- set from what was requested at join time

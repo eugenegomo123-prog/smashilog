@@ -5,11 +5,20 @@ import { compressImageFile } from "../imageUpload";
 import { AccountAvatar } from "../accountAvatar";
 import { confirmDialog } from "../dialogs";
 import { Loading } from "../loading";
+import { BottomNav, type NavItem } from "../ui/BottomNav";
 import { OverallRecordCard, type OverallRecordStats } from "../overallRecord";
 import { PartnerStatsPreview, type PartnerStatsData } from "../partnerStats";
 
 type Tab = "stats" | "rank" | "ranking" | "history" | "account";
 const TABS: Tab[] = ["stats", "rank", "ranking", "history", "account"];
+
+const NAV_ITEMS: NavItem<Tab>[] = [
+  { id: "stats", label: "Stats", icon: "bar-chart" },
+  { id: "rank", label: "Rank", icon: "crown" },
+  { id: "ranking", label: "Ranking", icon: "trophy" },
+  { id: "history", label: "History", icon: "history" },
+  { id: "account", label: "Account", icon: "user" },
+];
 
 interface MeInfo {
   username: string;
@@ -78,19 +87,15 @@ export default function PlayerHome() {
         <h1>Hi, {api.playerUsername()}</h1>
       </div>
 
+      <div key={tab} className="tab-panel">
       {tab === "stats" && <StatsTab />}
       {tab === "rank" && <RankTab />}
       {tab === "ranking" && <RankingTab />}
       {tab === "history" && <HistoryTab />}
       {tab === "account" && <AccountTab onRenamed={() => setNameVersion((v) => v + 1)} />}
+      </div>
 
-      <nav className="tabs">
-        <button className={tab === "stats" ? "active" : ""} onClick={() => setTab("stats")}>📊 Stats</button>
-        <button className={tab === "rank" ? "active" : ""} onClick={() => setTab("rank")}>🏅 Rank</button>
-        <button className={tab === "ranking" ? "active" : ""} onClick={() => setTab("ranking")}>🏆 Ranking</button>
-        <button className={tab === "history" ? "active" : ""} onClick={() => setTab("history")}>📜 History</button>
-        <button className={tab === "account" ? "active" : ""} onClick={() => setTab("account")}>⚙️ Account</button>
-      </nav>
+      <BottomNav items={NAV_ITEMS} active={tab} onChange={setTab} />
     </div>
   );
 }
