@@ -58,7 +58,7 @@ const COLORS = {
   divider: "rgba(255,255,255,0.10)",
 };
 
-const FONT = '"Fredoka", sans-serif';
+const FONT = '"Inter", sans-serif';
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   const rr = Math.min(r, w / 2, h / 2);
@@ -550,7 +550,7 @@ function paintFooter(ctx: CanvasRenderingContext2D, width: number, height: numbe
 
 // The webfont needs to actually be loaded before we measure/draw text with
 // it, or canvas silently falls back to a system sans-serif for the first
-// render (index.html already <link>s Fredoka for the rest of the app, but
+// render (index.html already <link>s Inter for the rest of the app, but
 // loading it doesn't mean it's *ready* yet the first time this runs).
 async function ensureFontReady() {
   try {

@@ -131,7 +131,7 @@ export default function PlayerProfile() {
               {profile.rating.division ? ` ${profile.rating.division}` : ""}
             </div>
             {profile.rating.provisional && (
-              <div style={{ fontSize: 13, color: "#d8cdbe", marginTop: 4 }}>
+              <div style={{ fontSize: 13, color: "#b8c4db", marginTop: 4 }}>
                 {profile.rating.ratedGamesPlayed < profile.rating.provisionalGamesThreshold
                   ? `Still calibrating — ${profile.rating.ratedGamesPlayed} of ${profile.rating.provisionalGamesThreshold} rated games played`
                   : "Recalibrating after some time away"}

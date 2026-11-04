@@ -619,7 +619,7 @@ function RankTab() {
                 }}
               />
             </div>
-            <div style={{ fontSize: 12, color: "#d8cdbe", marginTop: 6 }}>
+            <div style={{ fontSize: 12, color: "#b8c4db", marginTop: 6 }}>
               {rating.progressPercent}% of the way to {rating.nextTier}
             </div>
           </div>
@@ -627,7 +627,7 @@ function RankTab() {
           <div style={{ fontSize: 13, color: "#ffd27a", marginTop: 10, fontWeight: 700 }}>🏆 Top rank reached!</div>
         )}
         {rating.provisional && (
-          <div style={{ fontSize: 13, color: "#d8cdbe", marginTop: 4 }}>
+          <div style={{ fontSize: 13, color: "#b8c4db", marginTop: 4 }}>
             {rating.ratedGamesPlayed < rating.provisionalGamesThreshold
               ? `Still calibrating — ${rating.ratedGamesPlayed} of ${rating.provisionalGamesThreshold} rated games played`
               : "Recalibrating after some time away"}

@@ -557,7 +557,7 @@ function statusColors(status: MyStatus): { bg: string; fg: string } {
     case "inactive":
       return { bg: "var(--inactive-bg)", fg: "var(--inactive)" };
     case "pending":
-      return { bg: "#ffe1b3", fg: "#8a4b00" };
+      return { bg: "rgba(255, 138, 61, 0.16)", fg: "#ffa45c" };
     case "queued":
     case "unassigned":
       return { bg: "var(--resting-bg)", fg: "var(--resting)" };

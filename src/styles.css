@@ -1,23 +1,36 @@
 :root {
-  --bg: #fff8e1;
-  --bg-2: #fffdf5;
-  --panel: #ffffff;
-  --panel-2: #fff6d9;
-  --border: #f3e2a3;
-  --text: #4a3b1a;
-  --muted: #7a6b45;
-  --accent: #ffc233;
-  --accent-dark: #8a5a00;
-  --accent-2: #fb8c00;
-  --good: #2e7d32;
-  --good-bg: #d9f7dd;
-  --bad: #c62828;
-  --bad-bg: #fde0e0;
-  --resting: #8a5b00;
-  --resting-bg: #fff0c2;
-  --inactive: #6b6250;
-  --inactive-bg: #ece7da;
-  --radius: 20px;
+  /* Dark navy + bright green. The variable NAMES are the ones the app already
+     used (so every screen picks the new look up automatically); only their
+     values changed. Notes on the ones whose meaning shifted:
+       --accent       was yellow, now the green used for buttons, highlights
+       --accent-dark  was a dark brown used for emphasised text; now a green
+                      that reads well on navy (same value as --accent)
+       --accent-2     was orange (focus rings, active-tab bar); now green
+       --accent-ink   text that sits ON a green surface (buttons, tags) */
+  color-scheme: dark;
+  --bg: #0b1220;
+  --bg-2: #0e1627;
+  --panel: #121b2e;
+  --panel-2: #18233b;
+  --border: #243253;
+  --text: #e8eef9;
+  --muted: #93a3bf;
+  --accent: #2ee57f;
+  --accent-dark: #2ee57f;
+  --accent-2: #2ee57f;
+  --accent-ink: #06230f;
+  --accent-soft: rgba(46, 229, 127, 0.14);
+  --gold: #ffc53d;
+  --gold-light: #ffe08a;
+  --good: #2ee57f;
+  --good-bg: rgba(46, 229, 127, 0.14);
+  --bad: #ff6b6b;
+  --bad-bg: rgba(255, 107, 107, 0.14);
+  --resting: #ffc53d;
+  --resting-bg: rgba(255, 197, 61, 0.14);
+  --inactive: #93a3bf;
+  --inactive-bg: rgba(147, 163, 191, 0.14);
+  --radius: 16px;
 }
 
 * { box-sizing: border-box; }
@@ -34,13 +47,11 @@ html {
 body {
   margin: 0;
   overflow-x: hidden;
-  background:
-    radial-gradient(circle at 15% 8%, #fffef8 0%, transparent 40%),
-    radial-gradient(circle at 85% 92%, #fff2c4 0%, transparent 45%),
-    linear-gradient(180deg, var(--bg-2) 0%, var(--bg) 100%);
-  background-attachment: fixed;
+  /* A flat colour: the old fixed radial-gradient background repainted on every
+     scroll, which is slow on low-end Android phones. */
+  background: var(--bg);
   color: var(--text);
-    font-family: "Fredoka", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -87,13 +98,20 @@ button, input, select {
 }
 
 .brand .dot {
-  color: var(--accent-2);
+  color: var(--gold);
 }
 
 .subtitle {
   color: var(--muted);
   margin: 0 0 24px;
   font-size: 14px;
+}
+
+/* Line icons from src/ui/Icon.tsx. Sized by their width/height attributes;
+   this just stops them squashing inside flex rows. */
+.icon {
+  display: block;
+  flex: none;
 }
 
 /* Small shared text styles. These replace the same few inline style={{...}}
@@ -179,10 +197,10 @@ button, input, select {
 }
 
 .big-btn.primary {
-  background: linear-gradient(160deg, #ffd166, var(--accent));
+  background: var(--accent);
   border: none;
-  color: #4a3200;
-  box-shadow: 0 3px 0 var(--accent-dark);
+  color: var(--accent-ink);
+  box-shadow: 0 3px 0 #17a35a;
 }
 
 .big-btn.ghost {
@@ -195,7 +213,6 @@ button, input, select {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 16px;
-  box-shadow: 0 2px 8px rgba(180, 140, 20, 0.08);
 }
 
 .card + .card { margin-top: 12px; }
@@ -232,7 +249,8 @@ button, input, select {
 
 .overall-record-wl span {
   margin: 0 3px;
-  color: var(--border);
+  color: var(--muted);
+  opacity: 0.6;
 }
 
 .overall-record-bar {
@@ -380,16 +398,13 @@ button, input, select {
 }
 
 /* Rank badge art (src/assets/ranks/*, loaded as the 512px .webp copies) is drawn to glow against a dark
-   background -- on this app's light cream cards its fine white/gold
-   linework all but disappears, so it always gets this dark showcase card
-   (black center fading to dark brown at the edge) instead of the plain
-   .card background. */
+   background. It keeps its own black-centred showcase card (black centre
+   fading to navy at the edge) so the glow is strongest right behind the art. */
 .rank-badge-card {
-  background: radial-gradient(circle at 50% 50%, #000000 0%, #000000 35%, #2a1709 75%, #3c230f 100%);
+  background: radial-gradient(circle at 50% 50%, #000000 0%, #000000 35%, #0d1830 75%, #15244a 100%);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 32px 16px 24px;
-  box-shadow: 0 2px 8px rgba(180, 140, 20, 0.08);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -447,6 +462,11 @@ input:focus, select:focus {
   border-color: var(--accent-2);
 }
 
+input::placeholder {
+  color: var(--muted);
+  opacity: 0.85;
+}
+
 label {
   font-size: 13px;
   color: var(--muted);
@@ -464,7 +484,8 @@ label {
   font-weight: 700;
   cursor: pointer;
   font-size: 15px;
-  transition: transform 0.08s ease;
+  min-height: 48px;
+  transition: transform 0.08s ease, background 0.15s ease;
 }
 
 .btn:active { transform: scale(0.97); }
@@ -472,7 +493,7 @@ label {
 .btn.primary {
   background: var(--accent);
   border: none;
-  color: #4a3200;
+  color: var(--accent-ink);
 }
 
 .btn.danger {
@@ -521,7 +542,7 @@ label {
   padding-bottom: env(safe-area-inset-bottom);
   padding-left: env(safe-area-inset-left);
   padding-right: env(safe-area-inset-right);
-  box-shadow: 0 -2px 10px rgba(180, 140, 20, 0.08);
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35);
   z-index: 10;
 }
 
@@ -566,18 +587,15 @@ label {
   box-sizing: border-box;
   border-radius: 999px;
   background: var(--bad);
-  color: #fff;
+  color: #2a0808;
   font-size: 10px;
   font-weight: 700;
   line-height: 16px;
   text-align: center;
 }
 
-/* The orange (--accent-2) is only 2.4:1 against white -- too faint for an
-   11px label -- so the active label uses the darker --accent-dark brown
-   (about 5.9:1) and the orange moves to a bar along the top edge, which also
-   keeps the active tab obvious now that its text is close in tone to the
-   inactive (muted) tabs. */
+/* The active tab is green text plus a green bar along the top edge, so it
+   stays obvious even for someone who can't tell the two tones apart. */
 .tabs button.active {
   color: var(--accent-dark);
   box-shadow: inset 0 3px 0 var(--accent-2);
@@ -595,21 +613,21 @@ label {
 .badge.active { background: var(--good-bg); color: var(--good); }
 .badge.resting { background: var(--resting-bg); color: var(--resting); }
 .badge.inactive { background: var(--inactive-bg); color: var(--inactive); }
-.badge.pending { background: #ffe1b3; color: #8a4b00; }
+.badge.pending { background: var(--resting-bg); color: var(--resting); }
 .badge.ended { background: var(--inactive-bg); color: var(--inactive); }
 
 .level-pill {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: linear-gradient(160deg, #ffe8a3, var(--accent));
+  background: var(--panel-2);
+  border: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 18px;
   line-height: 1;
   flex-shrink: 0;
-  box-shadow: inset 0 -2px 0 rgba(0,0,0,0.06);
 }
 
 .match-card {
@@ -622,19 +640,19 @@ label {
 /* 2+ players with a current win streak (see fireBadge's 3-game threshold). */
 .match-card.fire-match {
   border-color: #ff8a3d;
-  box-shadow: 0 0 0 3px rgba(255, 106, 0, 0.35);
+  box-shadow: 0 0 0 3px rgba(255, 138, 61, 0.35);
 }
 
 /* 2+ players currently in the session's top-3 ranking. */
 .match-card.top-match {
   border-color: #c77dd6;
-  box-shadow: 0 0 0 3px rgba(142, 36, 170, 0.3);
+  box-shadow: 0 0 0 3px rgba(199, 125, 214, 0.35);
 }
 
 /* Both at once -- stack the two halos so neither indicator gets lost. */
 .match-card.fire-match.top-match {
   border-color: #ff8a3d;
-  box-shadow: 0 0 0 3px rgba(255, 106, 0, 0.35), 0 0 0 6px rgba(142, 36, 170, 0.25);
+  box-shadow: 0 0 0 3px rgba(255, 138, 61, 0.35), 0 0 0 6px rgba(199, 125, 214, 0.28);
 }
 
 .match-badges {
@@ -654,13 +672,13 @@ label {
 }
 
 .match-badge.fire {
-  background: #ffe0c2;
-  color: #a84b00;
+  background: rgba(255, 138, 61, 0.16);
+  color: #ffa45c;
 }
 
 .match-badge.top {
-  background: #f1dcf7;
-  color: #6a1b84;
+  background: rgba(199, 125, 214, 0.18);
+  color: #e2a8ee;
 }
 
 .team-row {
@@ -680,7 +698,7 @@ label {
 
 .team-row > strong {
   flex-shrink: 0;
-  /* Darker than --accent-2 (2.4:1 on white) so scores are easy to read. */
+  /* Green so scores stand out against the navy cards. */
   color: var(--accent-dark);
 }
 
@@ -708,7 +726,7 @@ label {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(74, 59, 26, 0.45);
+  background: rgba(3, 6, 12, 0.72);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -719,12 +737,13 @@ label {
 
 .modal-card {
   background: var(--panel);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 24px;
   max-width: 360px;
   width: 100%;
   text-align: center;
-  box-shadow: 0 12px 32px rgba(74, 59, 26, 0.3);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
 }
 
 .modal-card p {
@@ -867,7 +886,6 @@ table.ranking th {
   border-radius: var(--radius);
   padding: 20px 12px 0;
   margin-bottom: 20px;
-  box-shadow: 0 2px 8px rgba(180, 140, 20, 0.08);
   overflow: hidden;
 }
 
@@ -911,7 +929,7 @@ table.ranking th {
   height: 62px;
   font-size: 30px;
   background: linear-gradient(160deg, #fff3b0, #ffcc33);
-  box-shadow: inset 0 -3px 0 rgba(0,0,0,0.08), 0 0 0 6px rgba(255, 194, 51, 0.25);
+  box-shadow: inset 0 -3px 0 rgba(0,0,0,0.08), 0 0 0 6px rgba(255, 197, 61, 0.28);
 }
 
 .podium-place.bronze .podium-avatar {
@@ -1062,7 +1080,7 @@ table.ranking th {
 
 .podium-place.gold .podium-stand {
   height: 72px;
-  background: linear-gradient(160deg, #ffe066, var(--accent));
+  background: linear-gradient(160deg, var(--gold-light), var(--gold));
 }
 
 .podium-place.silver .podium-stand {
@@ -1087,7 +1105,7 @@ table.ranking th {
   font-size: 13px;
   font-weight: 700;
   text-decoration: none;
-  box-shadow: 0 2px 8px rgba(180, 140, 20, 0.12);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
   z-index: 5;
 }
 
@@ -1102,9 +1120,9 @@ table.ranking th {
   justify-content: center;
   flex-shrink: 0;
   font-weight: 700;
-  color: var(--accent-dark);
-  background: linear-gradient(160deg, #f3f3f3, #d5d9de);
-  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.08);
+  color: var(--text);
+  background: linear-gradient(160deg, #2a3a5e, #1e2b49);
+  box-shadow: inset 0 0 0 1px var(--border);
 }
 
 .matchup {
