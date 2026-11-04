@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { accountPictureUrl, api, TIER_BADGE_IMAGE } from "../api";
 import { AccountAvatar } from "../accountAvatar";
 import { Loading } from "../loading";
+import { Icon } from "../ui/Icon";
 import { OverallRecordCard, type OverallRecordStats } from "../overallRecord";
 
 // Same shape as api.ts's getAccountProfile() response -- kept here rather
@@ -66,7 +67,8 @@ export default function PlayerProfile() {
           "back" straight to that tab (via PlayerHome's ?tab= query param)
           instead of the default Stats tab. */}
       <Link className="back-link" to="/me?tab=ranking">
-        ← Back
+        <Icon name="chevron-left" size={16} />
+        Back
       </Link>
 
       {!loaded && <Loading />}
@@ -109,7 +111,7 @@ export default function PlayerProfile() {
                   onClick={() => setPhotoOpen(false)}
                   aria-label="Close"
                 >
-                  ×
+                  <Icon name="x" size={18} />
                 </button>
                 <img
                   src={accountPictureUrl(accountId, profile.pictureUpdatedAt)}

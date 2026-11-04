@@ -25,6 +25,7 @@ import { NextUp } from "../ui/NextUp";
 import { CourtHead, OpenCourt, VsDivider } from "../ui/CourtParts";
 import { courtSlots, eligiblePoolFor } from "../ui/live";
 import { QueueMatchCard, QueueTeams, WaitingChips } from "../ui/QueueParts";
+import { RankLegend, RankRow } from "../ui/RankRows";
 // Pure, dependency-free scoring module shared with the Worker's matchmaking
 // generator (worker/lib/regenerate.ts) -- imported directly rather than
 // duplicated so the grade shown here always matches the logic that actually
@@ -1348,7 +1349,8 @@ function RankingTab({
     <div>
       <div className="row between" style={{ marginBottom: 16 }}>
         <div className="caption">{shareMsg || " "}</div>
-        <button className="btn small" onClick={handleShare} disabled={sorted.length === 0 || sharing}>
+        <button className="btn small with-icon" onClick={handleShare} disabled={sorted.length === 0 || sharing}>
+          <Icon name="share" size={16} />
           {sharing ? "Preparing image…" : "Share results"}
         </button>
       </div>
@@ -1357,42 +1359,31 @@ function RankingTab({
 
       {top3.length > 0 && <Podium top3={top3} onSelect={setViewingPlayer} />}
       {rest.length > 0 && (
-        <div className="table-wrap">
-          <table className="ranking">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Player</th>
-                <th>W-L</th>
-                <th>Win%</th>
-                <th>Diff</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rest.map((p, i) => {
-                const avgDiff = p.gamesPlayed ? (p.pointsFor - p.pointsAgainst) / p.gamesPlayed : 0;
-                const avgDiffLabel = avgDiff.toFixed(1);
-                return (
-                  <tr key={p.id}>
-                    <td>{i + 4}</td>
-                    <td>
-                      <span className="rank-row-icon" style={{ color: "var(--muted)" }}><RankAvatar player={p} /></span>{" "}
-                      <button type="button" className="name-link" onClick={() => setViewingPlayer(p)}>
-                        {p.name}
-                      </button>{" "}
-                      {fireBadge(p.currentStreak)}
-                    </td>
-                    <td>{p.wins}-{p.losses}</td>
-                    <td>{p.gamesPlayed ? Math.round((p.wins / p.gamesPlayed) * 100) : 0}%</td>
-                    <td style={{ color: avgDiff > 0 ? "var(--good)" : avgDiff < 0 ? "var(--bad)" : "var(--muted)" }}>
-                      {avgDiff > 0 ? `+${avgDiffLabel}` : avgDiffLabel}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <>
+          <RankLegend />
+          <div className="rank-list">
+            {rest.map((p, i) => {
+              const avgDiff = p.gamesPlayed ? (p.pointsFor - p.pointsAgainst) / p.gamesPlayed : 0;
+              return (
+                <RankRow
+                  key={p.id}
+                  rank={i + 4}
+                  avatar={<RankAvatar player={p} />}
+                  name={p.name}
+                  nameExtra={fireBadge(p.currentStreak)}
+                  sub={
+                    <span>
+                      {p.wins}W · {p.losses}L
+                    </span>
+                  }
+                  winPct={p.gamesPlayed ? Math.round((p.wins / p.gamesPlayed) * 100) : 0}
+                  avgDiff={avgDiff}
+                  onClick={() => setViewingPlayer(p)}
+                />
+              );
+            })}
+          </div>
+        </>
       )}
       {sorted.length === 0 && <div className="empty-state">No ranked players yet.</div>}
     </div>

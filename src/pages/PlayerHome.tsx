@@ -6,6 +6,8 @@ import { AccountAvatar } from "../accountAvatar";
 import { confirmDialog } from "../dialogs";
 import { Loading } from "../loading";
 import { BottomNav, type NavItem } from "../ui/BottomNav";
+import { Icon } from "../ui/Icon";
+import { RankLegend, RankRow } from "../ui/RankRows";
 import { OverallRecordCard, type OverallRecordStats } from "../overallRecord";
 import { PartnerStatsPreview, type PartnerStatsData } from "../partnerStats";
 
@@ -81,7 +83,8 @@ export default function PlayerHome() {
   return (
     <div className="screen">
       <Link className="back-link" to="/">
-        ← Back
+        <Icon name="chevron-left" size={16} />
+        Back
       </Link>
       <div className="brand">
         <h1>Hi, {api.playerUsername()}</h1>
@@ -197,6 +200,8 @@ function RankingTab() {
   // splits its own top3/rest.
   const top3 = visible?.slice(0, 3) ?? [];
   const rest = visible?.slice(3) ?? [];
+  // Where the signed-in player sits in the list currently showing, if at all.
+  const myPlace = me && visible ? visible.findIndex((e) => e.username === me) + 1 : 0;
 
   return (
     <div>
@@ -237,9 +242,10 @@ function RankingTab() {
         <div className="empty-state">No {divisionFilter} players {scope === "all" ? "yet" : "in that month"}.</div>
       )}
       {visible && visible.length > 0 && (
-        <div className="row" style={{ justifyContent: "flex-end", marginBottom: 8 }}>
+        <div className="row between" style={{ marginBottom: 8 }}>
+          <div className="caption">{myPlace > 0 ? `You're #${myPlace} of ${visible.length}` : " "}</div>
           <button
-            className="btn small"
+            className="btn small with-icon"
             onClick={() =>
               downloadCsv(
                 `smashilog-ranking-${scope}${divisionFilter ? `-${divisionFilter.toLowerCase()}` : ""}.csv`,
@@ -257,68 +263,54 @@ function RankingTab() {
               )
             }
           >
-            ⬇ Download CSV
+            <Icon name="download" size={16} />
+            Download CSV
           </button>
         </div>
       )}
       {top3.length > 0 && <RankPodium top3={top3} me={me} />}
       {rest.length > 0 && (
-        <div className="table-wrap">
-          <table className="ranking">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Player</th>
-                <th>Rank</th>
-                <th>W-L</th>
-                <th>Win%</th>
-                <th>Diff</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rest.map((e, i) => {
-                const winPct = e.gamesPlayed ? Math.round((e.wins / e.gamesPlayed) * 100) : 0;
-                const avgDiff = e.gamesPlayed ? (e.pointsFor - e.pointsAgainst) / e.gamesPlayed : 0;
-                const isMe = e.username === me;
-                const badgeSrc = TIER_BADGE_IMAGE[e.tier] ?? TIER_BADGE_IMAGE.Fledgling;
-                return (
-                  <tr key={e.accountId} style={isMe ? { background: "var(--panel-2)", fontWeight: 700 } : undefined}>
-                    <td>{i + 4}</td>
-                    <td>
-                      <span className="rank-row-icon" style={{ marginRight: 5 }}>
-                        <AccountAvatar username={e.username} accountId={e.accountId} pictureUpdatedAt={e.pictureUpdatedAt} size={18} />
+        <>
+          <RankLegend />
+          <div className="rank-list">
+            {rest.map((e, i) => {
+              const winPct = e.gamesPlayed ? Math.round((e.wins / e.gamesPlayed) * 100) : 0;
+              const avgDiff = e.gamesPlayed ? (e.pointsFor - e.pointsAgainst) / e.gamesPlayed : 0;
+              const badgeSrc = TIER_BADGE_IMAGE[e.tier] ?? TIER_BADGE_IMAGE.Fledgling;
+              return (
+                <RankRow
+                  key={e.accountId}
+                  rank={i + 4}
+                  to={`/player/${e.accountId}`}
+                  isMe={e.username === me}
+                  avatar={
+                    <AccountAvatar username={e.username} accountId={e.accountId} pictureUpdatedAt={e.pictureUpdatedAt} size={36} />
+                  }
+                  name={e.username}
+                  sub={
+                    <>
+                      <span className="rank-tier">
+                        <img src={badgeSrc} alt="" />
+                        {e.tier}
+                        {e.division ? ` ${e.division}` : ""}
+                        {e.provisional && (
+                          <span title="Still calibrating" aria-label="still calibrating">
+                            ?
+                          </span>
+                        )}
                       </span>
-                      <Link to={`/player/${e.accountId}`} style={{ color: "inherit", textDecoration: "underline" }}>
-                        {e.username}
-                      </Link>
-                      {isMe ? " (you)" : ""}
-                    </td>
-                    <td>
-                      <img
-                        src={badgeSrc}
-                        alt=""
-                        style={{ width: 18, height: 18, verticalAlign: "middle", marginRight: 5 }}
-                      />
-                      {e.tier}
-                      {e.division ? ` ${e.division}` : ""}
-                      {e.provisional && (
-                        <span style={{ color: "var(--muted)" }} title="Still calibrating">
-                          {" "}
-                          ?
-                        </span>
-                      )}
-                    </td>
-                    <td>{e.wins}-{e.losses}</td>
-                    <td>{winPct}%</td>
-                    <td style={{ color: avgDiff > 0 ? "var(--good)" : avgDiff < 0 ? "var(--bad)" : "var(--muted)" }}>
-                      {avgDiff > 0 ? `+${avgDiff.toFixed(1)}` : avgDiff.toFixed(1)}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                      <span>
+                        {e.wins}W · {e.losses}L
+                      </span>
+                    </>
+                  }
+                  winPct={winPct}
+                  avgDiff={avgDiff}
+                />
+              );
+            })}
+          </div>
+        </>
       )}
     </div>
   );
@@ -359,7 +351,7 @@ function RankPodiumPlace({
   const winPct = entry.gamesPlayed ? Math.round((entry.wins / entry.gamesPlayed) * 100) : 0;
   const badgeSrc = TIER_BADGE_IMAGE[entry.tier] ?? TIER_BADGE_IMAGE.Fledgling;
   return (
-    <div className={`podium-place ${rankClass}`}>
+    <div className={`podium-place ${rankClass}${entry.username === me ? " me" : ""}`}>
       {place === 1 && <div className="podium-crown">👑</div>}
       {/* AccountAvatar is already a fully self-contained circular avatar
           (its own size/background/initials-fallback via the .avatar class),

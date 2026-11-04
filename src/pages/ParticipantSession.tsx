@@ -25,6 +25,7 @@ import { NextUp } from "../ui/NextUp";
 import { CourtHead, OpenCourt } from "../ui/CourtParts";
 import { courtSlots, eligiblePoolFor } from "../ui/live";
 import { QueueMatchCard, QueueTeams, WaitingChips } from "../ui/QueueParts";
+import { RankLegend, RankRow } from "../ui/RankRows";
 
 type Tab = "home" | "queue" | "ranking" | "history" | "me";
 
@@ -409,6 +410,7 @@ export default function ParticipantSession() {
           players={players.filter((p) => p.approved && p.playingMode !== "chill")}
           history={matchData.history}
           playerById={playerById}
+          myId={myId}
         />
       )}
       {tab === "history" && <HistoryTab history={matchData.history} playerById={playerById} myId={myId} />}
@@ -881,13 +883,18 @@ function RankingTab({
   players,
   history,
   playerById,
+  myId,
 }: {
   session: Session;
   players: Player[];
   history: Match[];
   playerById: (id: number) => Player | undefined;
+  myId: number | null;
 }) {
   const sorted = [...players].sort(rankCompare);
+  // This player's place in the ranking, if they're in it (chill players and
+  // anyone not yet approved aren't ranked).
+  const myPlace = myId != null ? sorted.findIndex((p) => p.id === myId) + 1 : 0;
   const top3 = sorted.slice(0, 3);
   const rest = sorted.slice(3);
   const awards = session.status === "ended" ? buildAwards(players, history) : null;
@@ -927,52 +934,43 @@ function RankingTab({
   return (
     <div>
       <div className="row between" style={{ marginBottom: 16 }}>
-        <div className="caption">{shareMsg || " "}</div>
-        <button className="btn small" onClick={handleShare} disabled={sorted.length === 0 || sharing}>
+        <div className="caption">{shareMsg || (myPlace > 0 ? `You're #${myPlace} of ${sorted.length}` : " ")}</div>
+        <button className="btn small with-icon" onClick={handleShare} disabled={sorted.length === 0 || sharing}>
+          <Icon name="share" size={16} />
           {sharing ? "Preparing image…" : "Share results"}
         </button>
       </div>
 
       {awards && <AwardsPanel awards={awards} />}
 
-      {top3.length > 0 && <Podium top3={top3} onSelect={setViewingPlayer} />}
+      {top3.length > 0 && <Podium top3={top3} onSelect={setViewingPlayer} myId={myId} />}
       {rest.length > 0 && (
-        <div className="table-wrap">
-          <table className="ranking">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Player</th>
-                <th>W-L</th>
-                <th>Win%</th>
-                <th>Diff</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rest.map((p, i) => {
-                const avgDiff = p.gamesPlayed ? (p.pointsFor - p.pointsAgainst) / p.gamesPlayed : 0;
-                const avgDiffLabel = avgDiff.toFixed(1);
-                return (
-                  <tr key={p.id}>
-                    <td>{i + 4}</td>
-                    <td>
-                      <span className="rank-row-icon" style={{ color: "var(--muted)" }}><RankAvatar player={p} /></span>{" "}
-                      <button type="button" className="name-link" onClick={() => setViewingPlayer(p)}>
-                        {p.name}
-                      </button>{" "}
-                      {fireBadge(p.currentStreak)}
-                    </td>
-                    <td>{p.wins}-{p.losses}</td>
-                    <td>{p.gamesPlayed ? Math.round((p.wins / p.gamesPlayed) * 100) : 0}%</td>
-                    <td style={{ color: avgDiff > 0 ? "var(--good)" : avgDiff < 0 ? "var(--bad)" : "var(--muted)" }}>
-                      {avgDiff > 0 ? `+${avgDiffLabel}` : avgDiffLabel}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <>
+          <RankLegend />
+          <div className="rank-list">
+            {rest.map((p, i) => {
+              const avgDiff = p.gamesPlayed ? (p.pointsFor - p.pointsAgainst) / p.gamesPlayed : 0;
+              return (
+                <RankRow
+                  key={p.id}
+                  rank={i + 4}
+                  avatar={<RankAvatar player={p} />}
+                  name={p.name}
+                  nameExtra={fireBadge(p.currentStreak)}
+                  sub={
+                    <span>
+                      {p.wins}W · {p.losses}L
+                    </span>
+                  }
+                  winPct={p.gamesPlayed ? Math.round((p.wins / p.gamesPlayed) * 100) : 0}
+                  avgDiff={avgDiff}
+                  isMe={p.id === myId}
+                  onClick={() => setViewingPlayer(p)}
+                />
+              );
+            })}
+          </div>
+        </>
       )}
       {sorted.length === 0 && <div className="empty-state">No ranked players yet.</div>}
     </div>
@@ -1026,13 +1024,21 @@ function AwardsPanel({ awards }: { awards: NonNullable<ReturnType<typeof buildAw
   );
 }
 
-function Podium({ top3, onSelect }: { top3: Player[]; onSelect: (player: Player) => void }) {
+function Podium({
+  top3,
+  onSelect,
+  myId,
+}: {
+  top3: Player[];
+  onSelect: (player: Player) => void;
+  myId: number | null;
+}) {
   const [first, second, third] = top3;
   return (
     <div className="podium">
-      <PodiumPlace place={2} player={second} onSelect={onSelect} />
-      <PodiumPlace place={1} player={first} onSelect={onSelect} />
-      <PodiumPlace place={3} player={third} onSelect={onSelect} />
+      <PodiumPlace place={2} player={second} onSelect={onSelect} myId={myId} />
+      <PodiumPlace place={1} player={first} onSelect={onSelect} myId={myId} />
+      <PodiumPlace place={3} player={third} onSelect={onSelect} myId={myId} />
     </div>
   );
 }
@@ -1041,16 +1047,19 @@ function PodiumPlace({
   place,
   player,
   onSelect,
+  myId,
 }: {
   place: 1 | 2 | 3;
   player?: Player;
   onSelect: (player: Player) => void;
+  myId: number | null;
 }) {
   if (!player) return <div className="podium-place" />;
   const rankClass = place === 1 ? "gold" : place === 2 ? "silver" : "bronze";
   const winPct = player.gamesPlayed ? Math.round((player.wins / player.gamesPlayed) * 100) : 0;
+  const isMe = player.id === myId;
   return (
-    <div className={`podium-place ${rankClass}`}>
+    <div className={`podium-place ${rankClass}${isMe ? " me" : ""}`}>
       {place === 1 && <div className="podium-crown">👑</div>}
       <div className="podium-avatar"><RankAvatar player={player} /></div>
       <div className="podium-name">
@@ -1059,6 +1068,7 @@ function PodiumPlace({
         </button>{" "}
         {fireBadge(player.currentStreak)}
       </div>
+      {isMe && <span className="you-chip sm">You</span>}
       <div className="podium-record">
         {player.wins}-{player.losses} ·{" "}
         <strong style={{ color: winPct >= 50 ? "var(--good)" : "var(--bad)" }}>{winPct}%</strong>
