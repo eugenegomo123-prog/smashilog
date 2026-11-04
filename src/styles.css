@@ -509,6 +509,17 @@ label {
   font-size: 13px;
 }
 
+/* A <label> styled as a button (the "Change photo" picker). Plain labels get
+   display:block and a 6px bottom margin from the global label rule, which made
+   this one sit 3px higher than the real <button> beside it ("Remove") and put
+   its text at the top of the box. This makes it behave exactly like a button. */
+label.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+}
+
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
