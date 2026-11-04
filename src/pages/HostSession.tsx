@@ -915,21 +915,6 @@ function QueueTab({
       )}
 
       <div className="section-head" style={{ marginTop: 20 }}>
-        <h3 className="section-title">Queue</h3>
-        <span className="caption">{queued.length}/8</span>
-      </div>
-      <p className="subtitle" style={{ marginBottom: 12 }}>
-        First in line takes the next court that opens up. Participants see this list.
-      </p>
-      <ActualQueueSection
-        queued={queued}
-        playerById={playerById}
-        topRankedIds={topRankedIds}
-        sessionId={sessionId}
-        onChanged={onChanged}
-      />
-
-      <div className="section-head" style={{ marginTop: 28 }}>
         <h3 className="section-title">Waiting players</h3>
         <span className="caption">{pool.length}</span>
       </div>
@@ -971,6 +956,24 @@ function QueueTab({
         justPlayed={justPlayed}
         restingLong={restingLong}
         queueFull={queueFull}
+        sessionId={sessionId}
+        onChanged={onChanged}
+      />
+
+      {/* The queue itself comes last: picking matches (above) is what the host
+          does most, so it shouldn't need a scroll past up to 8 queue rows. The
+          first few queued matches are also previewed on the Live tab. */}
+      <div className="section-head" style={{ marginTop: 28 }}>
+        <h3 className="section-title">Queue</h3>
+        <span className="caption">{queued.length}/8</span>
+      </div>
+      <p className="subtitle" style={{ marginBottom: 12 }}>
+        First in line takes the next court that opens up. Participants see this list.
+      </p>
+      <ActualQueueSection
+        queued={queued}
+        playerById={playerById}
+        topRankedIds={topRankedIds}
         sessionId={sessionId}
         onChanged={onChanged}
       />

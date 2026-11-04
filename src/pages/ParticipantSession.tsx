@@ -679,21 +679,15 @@ function HomeStatus({
 }) {
   const status = myCurrentStatus(player, ongoing, queued, courtLabels);
   const { bg, fg } = statusColors(status);
-  const playerById = (id: number) => players.find((p) => p.id === id);
 
+  // (A separate "Your match" card used to sit under this one. It repeated the
+  // same four names that the Courts list directly below already shows, with
+  // the player's own court highlighted in green, so it was removed.)
   return (
-    <>
-      <div className="card row between" style={{ background: bg, color: fg, alignItems: "center" }}>
-        <StatusCardBody status={status} />
-        <div className="level-pill" style={{ width: 44, height: 44, fontSize: 22 }} title={LEVEL_LABEL[player.level]}>{LEVEL_ICON[player.level]}</div>
-      </div>
-      {status.kind === "onCourt" && (
-        <div className="card">
-          <label>Your match</label>
-          <Matchup team1={status.match.team1} team2={status.match.team2} playerById={playerById} size={56} />
-        </div>
-      )}
-    </>
+    <div className="card row between" style={{ background: bg, color: fg, alignItems: "center" }}>
+      <StatusCardBody status={status} />
+      <div className="level-pill" style={{ width: 44, height: 44, fontSize: 22 }} title={LEVEL_LABEL[player.level]}>{LEVEL_ICON[player.level]}</div>
+    </div>
   );
 }
 
