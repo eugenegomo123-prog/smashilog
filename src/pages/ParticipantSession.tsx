@@ -20,6 +20,10 @@ import { Loading } from "../loading";
 import { Icon } from "../ui/Icon";
 import { BottomNav, type NavItem } from "../ui/BottomNav";
 import { SessionHeader } from "../ui/SessionHeader";
+import { StatTiles } from "../ui/StatTiles";
+import { NextUp } from "../ui/NextUp";
+import { CourtHead, OpenCourt } from "../ui/CourtParts";
+import { courtSlots, eligiblePoolFor } from "../ui/live";
 
 type Tab = "home" | "queue" | "ranking" | "history" | "me";
 
@@ -348,22 +352,42 @@ export default function ParticipantSession() {
 
       <div key={tab} className="tab-panel">
       {tab === "home" && (
-        <div className="stack">
-          {me && (
-            <HomeStatus
-              player={me}
-              players={players}
-              ongoing={matchData.ongoing}
-              queued={matchData.queued}
+        <div>
+          <StatTiles
+            players={players.filter((p) => p.approved).length}
+            courtsInPlay={matchData.ongoing.length}
+            courtCount={session.courtCount}
+            waiting={eligiblePoolFor(players, matchData.ongoing, matchData.queued).length}
+          />
+          <div className="stack">
+            {me && (
+              <HomeStatus
+                player={me}
+                players={players}
+                ongoing={matchData.ongoing}
+                queued={matchData.queued}
+                courtLabels={session.courtLabels}
+              />
+            )}
+            <div className="section-head" style={{ marginBottom: 0 }}>
+              <span className="section-title">Courts</span>
+              <span className="caption">
+                {matchData.ongoing.length} of {session.courtCount} in play
+              </span>
+            </div>
+            <OngoingTab
+              matches={matchData.ongoing}
               courtLabels={session.courtLabels}
+              playerById={playerById}
+              myId={myId}
+              topRankedIds={topRankedIds}
             />
-          )}
-          <OngoingTab
-            matches={matchData.ongoing}
-            courtLabels={session.courtLabels}
+          </div>
+          <NextUp
+            queued={matchData.queued}
             playerById={playerById}
+            onOpenQueue={() => setTab("queue")}
             myId={myId}
-            topRankedIds={topRankedIds}
           />
         </div>
       )}
@@ -759,22 +783,26 @@ function OngoingTab({
   myId: number | null;
   topRankedIds: Set<number>;
 }) {
+  // One card per court, in court order: the match on it, or an "open" card.
+  const { slots, extra } = courtSlots(courtLabels, matches);
+
+  function matchCard(m: Match) {
+    const mine = [...m.team1, ...m.team2].includes(myId ?? -1);
+    const flags = matchFlags(m.team1, m.team2, playerById, topRankedIds);
+    return (
+      <div key={m.id} className={`${matchCardClass(flags)}${mine ? " mine" : ""}`}>
+        <CourtHead label={liveCourtLabel(courtLabels, m)} startedAt={m.startedAt} />
+        <MatchBadges flags={flags} />
+        <Matchup team1={m.team1} team2={m.team2} playerById={playerById} size={40} />
+      </div>
+    );
+  }
+
   return (
     <div className="stack">
-      {matches.map((m) => {
-        const mine = [...m.team1, ...m.team2].includes(myId ?? -1);
-        const flags = matchFlags(m.team1, m.team2, playerById, topRankedIds);
-        return (
-          <div key={m.id} className={matchCardClass(flags)} style={mine ? { borderColor: "var(--accent)" } : undefined}>
-            <div className="court-label">
-              {liveCourtLabel(courtLabels, m)} · started {timeAgo(m.startedAt)}
-            </div>
-            <MatchBadges flags={flags} />
-            <Matchup team1={m.team1} team2={m.team2} playerById={playerById} size={44} />
-          </div>
-        );
-      })}
-      {matches.length === 0 && <div className="empty-state">No games in progress.</div>}
+      {slots.map(({ court, match }) => (match ? matchCard(match) : <OpenCourt key={court.id} label={court.label} />))}
+      {extra.map(matchCard)}
+      {slots.length === 0 && extra.length === 0 && <div className="empty-state">No games in progress.</div>}
     </div>
   );
 }

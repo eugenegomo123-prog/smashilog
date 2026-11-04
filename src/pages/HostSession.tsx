@@ -20,6 +20,10 @@ import { Loading } from "../loading";
 import { Icon } from "../ui/Icon";
 import { BottomNav, type NavItem } from "../ui/BottomNav";
 import { SessionHeader } from "../ui/SessionHeader";
+import { StatTiles } from "../ui/StatTiles";
+import { NextUp } from "../ui/NextUp";
+import { CourtHead, OpenCourt, VsDivider } from "../ui/CourtParts";
+import { courtSlots, eligiblePoolFor } from "../ui/live";
 // Pure, dependency-free scoring module shared with the Worker's matchmaking
 // generator (worker/lib/regenerate.ts) -- imported directly rather than
 // duplicated so the grade shown here always matches the logic that actually
@@ -179,12 +183,8 @@ function resultsDateLabel(session: Session): string {
   return `${prefix} · ${date}`;
 }
 
-// Players eligible to appear in a new suggestion or custom match: approved, active,
-// and not already on a court or already sitting in the actual queue.
-function eligiblePoolFor(players: Player[], ongoing: Match[], queued: Match[]): Player[] {
-  const busy = new Set([...ongoing, ...queued].flatMap((m) => [...m.team1, ...m.team2]));
-  return players.filter((p) => p.approved && p.status === "active" && !busy.has(p.id));
-}
+// eligiblePoolFor (approved, active players not already on a court or in the
+// queue) now lives in ../ui/live so the player's Home screen can share it.
 
 function isStale(match: Match, pool: Player[]): boolean {
   const ids = [...match.team1, ...match.team2];
@@ -371,9 +371,12 @@ export default function HostSession() {
           </button>
         }
       />
-      <p className="subtitle">
-        {session.courtCount} courts · {players.filter((p) => p.approved).length} players
-      </p>
+      {/* The Live tab shows these numbers as tiles instead. */}
+      {tab !== "courts" && (
+        <p className="subtitle">
+          {session.courtCount} courts · {players.filter((p) => p.approved).length} players
+        </p>
+      )}
       {error && <div className="error-text">{error}</div>}
 
       <div key={tab} className="tab-panel">
@@ -388,10 +391,13 @@ export default function HostSession() {
       {tab === "courts" && (
         <CourtsTab
           session={session}
+          players={players}
           ongoing={matchData.ongoing}
+          queued={matchData.queued}
           playerById={playerById}
           topRankedIds={topRankedIds}
           onChanged={load}
+          onOpenQueue={() => setTab("queue")}
         />
       )}
       {tab === "queue" && (
@@ -661,35 +667,59 @@ function PlayersTab({
 
 function CourtsTab({
   session,
+  players,
   ongoing,
+  queued,
   playerById,
   topRankedIds,
   onChanged,
+  onOpenQueue,
 }: {
   session: Session;
+  players: Player[];
   ongoing: Match[];
+  queued: Match[];
   playerById: (id: number) => Player | undefined;
   topRankedIds: Set<number>;
   onChanged: () => void;
+  onOpenQueue: () => void;
 }) {
-  // A court is occupied when some ongoing match is linked to it by stable id;
-  // only a match from before courtId existed (null) falls back to matching
-  // by label. This is what keeps a renamed court's slot from showing as both
-  // "open" (its new name, no match found) and still holding its live match --
-  // see worker/lib/courts.ts's isCourtOccupied, which this mirrors client-side.
-  const emptyCourts = session.courtLabels.filter(
-    (court) => !ongoing.some((m) => (m.courtId != null ? m.courtId === court.id : m.courtLabel === court.label)),
-  );
+  // One slot per court, in court order. A court counts as occupied by the
+  // same rule as before (by stable court id; only a match from before court
+  // ids existed falls back to the label) -- see courtSlots in ../ui/live.
+  const { slots, extra } = courtSlots(session.courtLabels, ongoing);
+  const waiting = eligiblePoolFor(players, ongoing, queued).length;
 
   return (
     <div>
-      <div className="row between" style={{ marginBottom: 16 }}>
-        <div className="caption">
-          {ongoing.length} of {session.courtCount} courts in play
-        </div>
+      <StatTiles
+        players={players.filter((p) => p.approved).length}
+        courtsInPlay={ongoing.length}
+        courtCount={session.courtCount}
+        waiting={waiting}
+      />
+      <div className="section-head">
+        <span className="section-title">Courts</span>
+        <span className="caption">
+          {ongoing.length} of {session.courtCount} in play
+        </span>
       </div>
       <div className="stack">
-        {ongoing.map((m) => (
+        {slots.map(({ court, match }) =>
+          match ? (
+            <ScoreCard
+              key={court.id}
+              match={match}
+              courtLabels={session.courtLabels}
+              playerById={playerById}
+              topRankedIds={topRankedIds}
+              onChanged={onChanged}
+            />
+          ) : (
+            <OpenCourt key={court.id} label={court.label} hint="fills automatically from the queue" />
+          ),
+        )}
+        {extra.map((m) => (
           <ScoreCard
             key={m.id}
             match={m}
@@ -699,12 +729,8 @@ function CourtsTab({
             onChanged={onChanged}
           />
         ))}
-        {emptyCourts.map((court) => (
-          <div key={court.id} className="match-card empty-state">
-            {court.label} — open · fills automatically from the queue
-          </div>
-        ))}
       </div>
+      <NextUp queued={queued} playerById={playerById} onOpenQueue={onOpenQueue} />
     </div>
   );
 }
@@ -767,21 +793,42 @@ function ScoreCard({
 
   return (
     <div className={matchCardClass(flags)}>
-      <div className="court-label">
-        {liveCourtLabel(courtLabels, match)} · started {timeAgo(match.startedAt)}
-      </div>
+      <CourtHead label={liveCourtLabel(courtLabels, match)} startedAt={match.startedAt} />
       <MatchBadges flags={flags} />
-      <div className="team-row">
-        <span>{match.team1.map((id) => playerById(id)?.name ?? "?").join(" & ")}</span>
-        <input className="score-input" placeholder="0" value={score1} onChange={(e) => setScore1(e.target.value)} inputMode="numeric" />
+      <div className="court-team">
+        <div className="court-names">
+          {match.team1.map((id) => (
+            <span key={id}>{playerById(id)?.name ?? "?"}</span>
+          ))}
+        </div>
+        <input
+          className="score-input"
+          placeholder="0"
+          aria-label="Team 1 score"
+          value={score1}
+          onChange={(e) => setScore1(e.target.value)}
+          inputMode="numeric"
+        />
       </div>
-      <div className="team-row">
-        <span>{match.team2.map((id) => playerById(id)?.name ?? "?").join(" & ")}</span>
-        <input className="score-input" placeholder="0" value={score2} onChange={(e) => setScore2(e.target.value)} inputMode="numeric" />
+      <VsDivider />
+      <div className="court-team">
+        <div className="court-names">
+          {match.team2.map((id) => (
+            <span key={id}>{playerById(id)?.name ?? "?"}</span>
+          ))}
+        </div>
+        <input
+          className="score-input"
+          placeholder="0"
+          aria-label="Team 2 score"
+          value={score2}
+          onChange={(e) => setScore2(e.target.value)}
+          inputMode="numeric"
+        />
       </div>
-      <div className="row" style={{ marginTop: 10 }}>
+      <div className="court-actions">
         <button className="btn small primary" onClick={submit} disabled={submitting}>
-          End
+          End match
         </button>
         <button className="btn small danger" onClick={remove} disabled={removing}>
           {removing ? "Removing…" : "Remove match"}
