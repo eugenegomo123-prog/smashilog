@@ -919,6 +919,7 @@ label {
 
 .section-head .section-title {
   font-weight: 700;
+  margin: 0;
 }
 
 /* A court card's top line: name left, time in play right. */
@@ -1132,6 +1133,193 @@ label {
   color: var(--accent-ink);
   font-size: 12px;
   font-weight: 800;
+}
+
+/* ---- Queue tab (src/ui/QueueParts.tsx) -------------------------------- */
+
+.queue-card {
+  padding: 14px;
+}
+
+.queue-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.queue-num {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.queue-title {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.queue-head .you-chip {
+  margin: 0 0 0 auto;
+}
+
+/* The next four: the first match in line, picked out in green. */
+.queue-card.hero {
+  padding: 16px;
+  border-color: var(--accent);
+  background: linear-gradient(180deg, var(--accent-soft), var(--panel-2) 75%);
+}
+
+.queue-card.hero .queue-num {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.queue-card.hero .queue-title,
+.queue-bolt {
+  color: var(--accent);
+}
+
+.queue-card.hero .queue-team {
+  font-size: 17px;
+}
+
+.queue-teams {
+  display: flex;
+  flex-direction: column;
+}
+
+.queue-team {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 6px;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+  min-width: 0;
+}
+
+.queue-team-member {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.queue-amp {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.queue-player {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queue-player.me {
+  color: var(--accent);
+}
+
+.queue-card .vs-divider {
+  margin: 8px 0;
+}
+
+.queue-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.queue-actions .btn {
+  margin-left: auto;
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* A bigger icon button for things the host taps a lot (the queue's up/down). */
+.icon-btn.lg {
+  width: 48px;
+  height: 48px;
+}
+
+.icon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Waiting players. */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  max-width: 100%;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.chip.me {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.chip-flag {
+  font-size: 12px;
+}
+
+/* Small helpers for the Queue forms. */
+.btn.block {
+  width: 100%;
+}
+
+.btn.with-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+/* Two buttons side by side when they fit; stacked full-width on a narrow
+   phone (this is what used to push the Queue tab 17px off the side at 320px). */
+.court-actions.wrap {
+  flex-wrap: wrap;
+}
+
+.court-actions.wrap .btn {
+  flex: 1 1 auto;
 }
 
 /* A status-change alert the player must dismiss with OK -- see

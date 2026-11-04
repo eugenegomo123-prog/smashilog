@@ -24,6 +24,7 @@ import { StatTiles } from "../ui/StatTiles";
 import { NextUp } from "../ui/NextUp";
 import { CourtHead, OpenCourt, VsDivider } from "../ui/CourtParts";
 import { courtSlots, eligiblePoolFor } from "../ui/live";
+import { QueueMatchCard, QueueTeams, WaitingChips } from "../ui/QueueParts";
 // Pure, dependency-free scoring module shared with the Worker's matchmaking
 // generator (worker/lib/regenerate.ts) -- imported directly rather than
 // duplicated so the grade shown here always matches the logic that actually
@@ -838,38 +839,6 @@ function ScoreCard({
   );
 }
 
-function TeamLine({
-  ids,
-  playerById,
-  justPlayed,
-  restingLong,
-}: {
-  ids: number[];
-  playerById: (id: number) => Player | undefined;
-  justPlayed?: Set<number>;
-  restingLong?: Set<number>;
-}) {
-  return (
-    <div className="team-row">
-      <span>
-        {ids
-          .map((id) => {
-            const player = playerById(id);
-            const name = player?.name ?? "?";
-            // Shown so the host can tell at a glance whether a suggested or
-            // queued match mixes chill and competitive players, and group
-            // like-with-like when building matches themselves.
-            const modeIcon = player?.playingMode === "chill" ? "😎" : "🏆";
-            const levelIcon = player ? LEVEL_ICON[player.level] : "";
-            const flags = `${justPlayed?.has(id) ? " 🥵" : ""}${restingLong?.has(id) ? " ⏳" : ""}`;
-            return `${modeIcon} ${levelIcon} ${name}${flags}`;
-          })
-          .join(" & ")}
-      </span>
-    </div>
-  );
-}
-
 function QueueTab({
   session,
   suggested,
@@ -943,7 +912,31 @@ function QueueTab({
         </div>
       )}
 
-      <h3 className="section-title">Suggested matches</h3>
+      <div className="section-head" style={{ marginTop: 20 }}>
+        <h3 className="section-title">Queue</h3>
+        <span className="caption">{queued.length}/8</span>
+      </div>
+      <p className="subtitle" style={{ marginBottom: 12 }}>
+        First in line takes the next court that opens up. Participants see this list.
+      </p>
+      <ActualQueueSection
+        queued={queued}
+        playerById={playerById}
+        topRankedIds={topRankedIds}
+        sessionId={sessionId}
+        onChanged={onChanged}
+      />
+
+      <div className="section-head" style={{ marginTop: 28 }}>
+        <h3 className="section-title">Waiting players</h3>
+        <span className="caption">{pool.length}</span>
+      </div>
+      <WaitingChips players={pool} justPlayed={justPlayed} restingLong={restingLong} />
+
+      <div className="section-head" style={{ marginTop: 28 }}>
+        <h3 className="section-title">Suggested matches</h3>
+        <span className="caption">{suggested.length}</span>
+      </div>
       <div className="stack">
         {suggested.map((m) => (
           <SuggestionCard
@@ -966,7 +959,9 @@ function QueueTab({
         )}
       </div>
 
-      <h3 className="section-title" style={{ marginTop: 24 }}>Build a custom match</h3>
+      <div className="section-head" style={{ marginTop: 28 }}>
+        <h3 className="section-title">Build a custom match</h3>
+      </div>
       <CustomMatchBuilder
         players={players}
         ongoing={ongoing}
@@ -974,18 +969,6 @@ function QueueTab({
         justPlayed={justPlayed}
         restingLong={restingLong}
         queueFull={queueFull}
-        sessionId={sessionId}
-        onChanged={onChanged}
-      />
-
-      <h3 className="section-title" style={{ marginTop: 24 }}>Actual queue ({queued.length}/8)</h3>
-      <p className="subtitle" style={{ marginBottom: 12 }}>
-        First in line takes the next court that opens up. Participants see this list — reorder or remove below.
-      </p>
-      <ActualQueueSection
-        queued={queued}
-        playerById={playerById}
-        topRankedIds={topRankedIds}
         sessionId={sessionId}
         onChanged={onChanged}
       />
@@ -1038,13 +1021,19 @@ function SuggestionCard({
     <div className={matchCardClass(flags)}>
       <QualityBadge quality={quality} />
       <MatchBadges flags={flags} />
-      <TeamLine ids={match.team1} playerById={playerById} justPlayed={justPlayed} restingLong={restingLong} />
-      <TeamLine ids={match.team2} playerById={playerById} justPlayed={justPlayed} restingLong={restingLong} />
-      <div style={{ fontSize: 12, color: stale ? "var(--bad)" : "var(--muted)", marginTop: 4 }}>
+      <QueueTeams
+        team1={match.team1}
+        team2={match.team2}
+        playerById={playerById}
+        detail
+        justPlayed={justPlayed}
+        restingLong={restingLong}
+      />
+      <div style={{ fontSize: 12, color: stale ? "var(--bad)" : "var(--muted)", marginTop: 8 }}>
         {stale ? "⚠️ Includes a player who's no longer available" : reason}
       </div>
       {error && <div className="error-text" style={{ marginTop: 6 }}>{error}</div>}
-      <button className="btn small primary" style={{ marginTop: 10 }} onClick={addToQueue} disabled={sending || queueFull}>
+      <button className="btn primary block" style={{ marginTop: 12 }} onClick={addToQueue} disabled={sending || queueFull}>
         {queueFull ? "Queue is full" : "Add to queue"}
       </button>
     </div>
@@ -1184,13 +1173,14 @@ function CustomMatchBuilder({
         {pillSelect(team2a, setTeam2a, "Player A")}
         {pillSelect(team2b, setTeam2b, "Player B")}
       </div>
-      <div className="row" style={{ marginTop: 12 }}>
+      <div className="court-actions wrap">
         <button
-          className="btn"
+          className="btn with-icon"
           onClick={balanceMatch}
           disabled={submitting || (team1a !== "" && team1b !== "" && team2a !== "" && team2b !== "")}
         >
-          ⚖️ Balance match
+          <Icon name="scale" size={18} />
+          Balance match
         </button>
         <button className="btn primary" onClick={createMatch} disabled={submitting || queueFull}>
           {queueFull ? "Queue is full" : "Add to queue"}
@@ -1259,33 +1249,48 @@ function ActualQueueSection({
     <div className="stack">
       {queued.map((m, i) => {
         const flags = matchFlags(m.team1, m.team2, playerById, topRankedIds);
+        const busy = busyId === m.id;
         return (
-        <div key={m.id} className={matchCardClass(flags)}>
-          <div className="court-label">Up #{i + 1}</div>
-          <QualityBadge quality={qualityForMatch(m, playerById)} />
-          <MatchBadges flags={flags} />
-          <TeamLine ids={m.team1} playerById={playerById} />
-          <TeamLine ids={m.team2} playerById={playerById} />
-          <div className="row" style={{ marginTop: 10 }}>
-            <button className="btn small" onClick={() => move(i, -1)} disabled={i === 0 || busyId === m.id}>
-              ▲
-            </button>
-            <button
-              className="btn small"
-              onClick={() => move(i, 1)}
-              disabled={i === queued.length - 1 || busyId === m.id}
-            >
-              ▼
-            </button>
-            <button className="btn small danger" onClick={() => remove(m.id)} disabled={busyId === m.id}>
-              Remove
-            </button>
-          </div>
-        </div>
+          <QueueMatchCard
+            key={m.id}
+            n={i + 1}
+            hero={i === 0}
+            className={matchCardClass(flags)}
+            actions={
+              <div className="queue-actions">
+                <button
+                  type="button"
+                  className="icon-btn lg"
+                  aria-label={`Move match ${i + 1} up`}
+                  onClick={() => move(i, -1)}
+                  disabled={i === 0 || busy}
+                >
+                  <Icon name="arrow-up" />
+                </button>
+                <button
+                  type="button"
+                  className="icon-btn lg"
+                  aria-label={`Move match ${i + 1} down`}
+                  onClick={() => move(i, 1)}
+                  disabled={i === queued.length - 1 || busy}
+                >
+                  <Icon name="arrow-down" />
+                </button>
+                <button className="btn small danger" onClick={() => remove(m.id)} disabled={busy}>
+                  <Icon name="trash" size={16} />
+                  Remove
+                </button>
+              </div>
+            }
+          >
+            <QualityBadge quality={qualityForMatch(m, playerById)} />
+            <MatchBadges flags={flags} />
+            <QueueTeams team1={m.team1} team2={m.team2} playerById={playerById} detail />
+          </QueueMatchCard>
         );
       })}
       {queued.length === 0 && (
-        <div className="empty-state">Queue is empty — add a suggested or custom match above.</div>
+        <div className="empty-state">Queue is empty — add a suggested or custom match below.</div>
       )}
     </div>
   );

@@ -24,6 +24,7 @@ import { StatTiles } from "../ui/StatTiles";
 import { NextUp } from "../ui/NextUp";
 import { CourtHead, OpenCourt } from "../ui/CourtParts";
 import { courtSlots, eligiblePoolFor } from "../ui/live";
+import { QueueMatchCard, QueueTeams, WaitingChips } from "../ui/QueueParts";
 
 type Tab = "home" | "queue" | "ranking" | "history" | "me";
 
@@ -393,7 +394,14 @@ export default function ParticipantSession() {
       )}
       {tab === "me" && me && <MeTab player={me} players={players} onChanged={load} />}
       {tab === "queue" && (
-        <QueueTab queued={matchData.queued} playerById={playerById} myId={myId} topRankedIds={topRankedIds} />
+        <QueueTab
+          queued={matchData.queued}
+          ongoing={matchData.ongoing}
+          players={players}
+          playerById={playerById}
+          myId={myId}
+          topRankedIds={topRankedIds}
+        />
       )}
       {tab === "ranking" && (
         <RankingTab
@@ -809,29 +817,61 @@ function OngoingTab({
 
 function QueueTab({
   queued,
+  ongoing,
+  players,
   playerById,
   myId,
   topRankedIds,
 }: {
   queued: Match[];
+  ongoing: Match[];
+  players: Player[];
   playerById: (id: number) => Player | undefined;
   myId: number | null;
   topRankedIds: Set<number>;
 }) {
+  // Players who are ready but not in any match yet -- the same "Waiting" rule
+  // as the number on the Home tab.
+  const waiting = eligiblePoolFor(players, ongoing, queued);
+
   return (
-    <div className="stack">
-      {queued.map((m, i) => {
-        const mine = [...m.team1, ...m.team2].includes(myId ?? -1);
-        const flags = matchFlags(m.team1, m.team2, playerById, topRankedIds);
-        return (
-          <div key={m.id} className={matchCardClass(flags)} style={mine ? { borderColor: "var(--accent)" } : undefined}>
-            <div className="court-label">Up #{i + 1}</div>
-            <MatchBadges flags={flags} />
-            <Matchup team1={m.team1} team2={m.team2} playerById={playerById} size={40} />
-          </div>
-        );
-      })}
-      {queued.length === 0 && <div className="empty-state">No matches queued right now.</div>}
+    <div>
+      <div className="section-head">
+        <span className="section-title">Queue</span>
+        <span className="caption">
+          {queued.length} {queued.length === 1 ? "match" : "matches"}
+        </span>
+      </div>
+      <div className="stack">
+        {queued.map((m, i) => {
+          const mine = [...m.team1, ...m.team2].includes(myId ?? -1);
+          const flags = matchFlags(m.team1, m.team2, playerById, topRankedIds);
+          return (
+            <QueueMatchCard
+              key={m.id}
+              n={i + 1}
+              hero={i === 0}
+              className={matchCardClass(flags)}
+              mine={mine}
+              head={mine ? <span className="you-chip">You</span> : undefined}
+            >
+              <MatchBadges flags={flags} />
+              {i === 0 ? (
+                <Matchup team1={m.team1} team2={m.team2} playerById={playerById} size={48} />
+              ) : (
+                <QueueTeams team1={m.team1} team2={m.team2} playerById={playerById} myId={myId} />
+              )}
+            </QueueMatchCard>
+          );
+        })}
+        {queued.length === 0 && <div className="empty-state">No matches queued right now.</div>}
+      </div>
+
+      <div className="section-head" style={{ marginTop: 28 }}>
+        <span className="section-title">Waiting players</span>
+        <span className="caption">{waiting.length}</span>
+      </div>
+      <WaitingChips players={waiting} myId={myId} />
     </div>
   );
 }
