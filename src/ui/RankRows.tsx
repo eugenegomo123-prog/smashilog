@@ -7,7 +7,7 @@ import { Link } from "react-router-dom";
 // that opens the player's session matches, or a link to their profile.
 //
 // It replaces the wide table the Ranking tabs used to have, which needed
-// sideways scrolling on a phone. `isMe` lights the row up yellow with a "You"
+// sideways scrolling on a phone. `isMe` lights the row up green with a "You"
 // tag so the signed-in player can find themselves at a glance.
 export function RankRow({
   rank,

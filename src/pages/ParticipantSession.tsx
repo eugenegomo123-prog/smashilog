@@ -682,7 +682,7 @@ function HomeStatus({
 
   // (A separate "Your match" card used to sit under this one. It repeated the
   // same four names that the Courts list directly below already shows, with
-  // the player's own court highlighted, so it was removed.)
+  // the player's own court highlighted in green, so it was removed.)
   return (
     <div className="card row between" style={{ background: bg, color: fg, alignItems: "center" }}>
       <StatusCardBody status={status} />
