@@ -1,12 +1,13 @@
 :root {
-  /* Dark navy + bright green. The variable NAMES are the ones the app already
-     used (so every screen picks the new look up automatically); only their
-     values changed. Notes on the ones whose meaning shifted:
-       --accent       was yellow, now the green used for buttons, highlights
-       --accent-dark  was a dark brown used for emphasised text; now a green
-                      that reads well on navy (same value as --accent)
-       --accent-2     was orange (focus rings, active-tab bar); now green
-       --accent-ink   text that sits ON a green surface (buttons, tags) */
+  /* Dark navy + bright yellow. The variable NAMES are the ones the app already
+     used (so every screen picks the look up automatically); only their
+     values change. Notes:
+       --accent       the main colour: buttons, active tab, "you" highlights
+       --accent-dark  emphasised text; same yellow, reads well on navy
+       --accent-2     focus rings and the active-tab bar; same yellow
+       --accent-ink   dark text that sits ON a yellow surface (buttons, tags)
+       --good         green, kept for "live", "won", "on court" and positive
+                      numbers, so those still mean the same thing */
   color-scheme: dark;
   --bg: #0b1220;
   --bg-2: #0e1627;
@@ -15,11 +16,11 @@
   --border: #243253;
   --text: #e8eef9;
   --muted: #93a3bf;
-  --accent: #2ee57f;
-  --accent-dark: #2ee57f;
-  --accent-2: #2ee57f;
-  --accent-ink: #06230f;
-  --accent-soft: rgba(46, 229, 127, 0.14);
+  --accent: #ffd23f;
+  --accent-dark: #ffd23f;
+  --accent-2: #ffd23f;
+  --accent-ink: #241a00;
+  --accent-soft: rgba(255, 210, 63, 0.14);
   --gold: #ffc53d;
   --gold-light: #ffe08a;
   --good: #2ee57f;
@@ -634,7 +635,7 @@ button.back-link {
   text-align: center;
 }
 
-/* The active tab is green (icon and label) plus a short green bar on the top
+/* The active tab is yellow (icon and label) plus a short yellow bar on the top
    edge, so it stays obvious even for someone who can't tell colours apart. */
 .tabs button.active {
   color: var(--accent);
@@ -693,8 +694,8 @@ button.back-link {
 }
 
 .live-pill.live {
-  color: var(--accent);
-  background: var(--accent-soft);
+  color: var(--good);
+  background: var(--good-bg);
   border-color: rgba(46, 229, 127, 0.35);
 }
 
@@ -706,7 +707,7 @@ button.back-link {
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--good);
   animation: live-ping 1.8s ease-out infinite;
 }
 
@@ -855,7 +856,7 @@ button.back-link {
 
 .team-row > strong {
   flex-shrink: 0;
-  /* Green so scores stand out against the navy cards. */
+  /* Yellow so scores stand out against the navy cards. */
   color: var(--accent-dark);
 }
 
@@ -1203,7 +1204,7 @@ button.back-link {
   margin: 0 0 0 auto;
 }
 
-/* The next four: the first match in line, picked out in green. */
+/* The next four: the first match in line, picked out in yellow. */
 .queue-card.hero {
   padding: 16px;
   border-color: var(--accent);
@@ -2017,7 +2018,7 @@ button.back-link {
 }
 
 .hist-score b.w {
-  color: var(--accent);
+  color: var(--good);
 }
 
 .hist-score i {
@@ -2076,7 +2077,7 @@ button.back-link {
   letter-spacing: 0.02em;
 }
 
-.hist-res.won { color: var(--accent); }
+.hist-res.won { color: var(--good); }
 .hist-res.lost { color: var(--bad); }
 
 .hist-chev {
@@ -2141,7 +2142,7 @@ button.back-link {
 }
 
 .hist-team.win > strong {
-  color: var(--accent);
+  color: var(--good);
 }
 
 .hist-body .error-text {
@@ -2287,10 +2288,10 @@ button.back-link {
   margin-top: 4px;
 }
 
-/* Home screen: the logo and buttons sit in the middle with a soft green
+/* Home screen: the logo and buttons sit in the middle with a soft yellow
    glow behind them. The glow is a plain background, not animated. */
 .home-screen {
-  background: radial-gradient(ellipse 80% 340px at 50% 0, rgba(46, 229, 127, 0.1), transparent 70%) no-repeat;
+  background: radial-gradient(ellipse 80% 340px at 50% 0, rgba(255, 210, 63, 0.1), transparent 70%) no-repeat;
 }
 
 .home-main {

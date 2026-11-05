@@ -50,8 +50,9 @@ const COLORS = {
   bronzeLight: "#f3cd9e",
   bronzeDeep: "#d6924f",
   white: "#ffffff",
-  // Same navy-and-green look as the app (see :root in styles.css).
-  accent: "#2ee57f",
+  // Same navy-and-yellow look as the app (see :root in styles.css); green is
+  // kept for positive numbers, like the app does.
+  accent: "#ffd23f",
   muted: "#b4c1d9",
   mutedDim: "#8a9bb8",
   good: "#2ee57f",
@@ -542,7 +543,7 @@ function drawContent(
 
 function paintBackground(ctx: CanvasRenderingContext2D, width: number, height: number) {
   // Navy, a little lighter behind the title and darker toward the edges, with
-  // a faint green glow at the top -- the same navy-and-green as the app.
+  // a faint yellow glow at the top -- the same navy-and-yellow as the app.
   const bgGrad = ctx.createRadialGradient(width / 2, height * 0.3, 60, width / 2, height * 0.3, height * 1.05);
   bgGrad.addColorStop(0, "#16233d");
   bgGrad.addColorStop(0.4, "#0e1830");
@@ -552,8 +553,8 @@ function paintBackground(ctx: CanvasRenderingContext2D, width: number, height: n
   ctx.fillRect(0, 0, width, height);
 
   const glow = ctx.createRadialGradient(width / 2, 0, 0, width / 2, 0, width * 0.7);
-  glow.addColorStop(0, "rgba(46,229,127,0.14)");
-  glow.addColorStop(1, "rgba(46,229,127,0)");
+  glow.addColorStop(0, "rgba(255,210,63,0.14)");
+  glow.addColorStop(1, "rgba(255,210,63,0)");
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, width, height);
 }

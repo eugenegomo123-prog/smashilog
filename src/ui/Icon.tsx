@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 // The app's one icon set: plain line icons on a 24x24 grid, drawn here as
 // inline SVG so there's no icon package to install and nothing extra to
 // download. They take their colour from the surrounding text (currentColor),
-// so a green tab, a red delete button and a muted caption all just work.
+// so a yellow tab, a red delete button and a muted caption all just work.
 //
 // These replace the emoji that used to be used as buttons/tabs/arrows (emoji
 // look different on every phone and can't be recoloured). The egg-to-chicken

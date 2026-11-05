@@ -84,7 +84,7 @@ export function QueueTeams({
 }
 
 // One match in the queue. The first one (`hero`) is the "next four": the four
-// players who take the next court that opens up, drawn bigger and in green.
+// players who take the next court that opens up, drawn bigger and in yellow.
 // The rest are numbered rows. `head` is for something on the right of the
 // title line (a "You" tag), `actions` for the row of buttons underneath.
 export function QueueMatchCard({
