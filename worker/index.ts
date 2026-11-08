@@ -15,7 +15,13 @@ import {
 } from "./lib/accountStats";
 import { hashPassword, verifyPassword } from "./lib/passwords";
 import { regenerateQueue } from "./lib/regenerate";
-import { fillOpenCourtsFromQueue, nextQueuePosition, MAX_QUEUE_LENGTH } from "./lib/queue";
+import {
+  fillOpenCourtsFromQueue,
+  nextQueuePosition,
+  syncAutoQueue,
+  syncAutoQueueQuietly,
+  MAX_QUEUE_LENGTH,
+} from "./lib/queue";
 import { playerIdsUnavailable, recomputeSessionStats } from "./lib/stats";
 import { rateCompletedMatch, rollbackMatchRating, publicRatingView, ratingHistoryView } from "./lib/ratingIntegration";
 import { normalizeCourts, resizeCourts, type Court } from "./lib/courts";
@@ -557,6 +563,10 @@ app.patch("/api/sessions/:id", async (c) => {
     updates.endedAt = null;
   }
   if (typeof body.name === "string" && body.name.trim()) updates.name = body.name.trim();
+  // The Queue tab's Auto switch. Turning it ON also plans the queue right away (see
+  // below); turning it OFF changes nothing else -- matches it already planned simply
+  // stay in the queue like any other.
+  if (typeof body.autoQueue === "boolean") updates.autoQueue = body.autoQueue;
   // Resizing court count preserves every existing court's stable id/label by
   // position (resizeCourts) -- it never rebuilds the array from scratch, so an
   // ongoing match's courtId stays valid across a resize, not just a rename.
@@ -571,6 +581,15 @@ app.patch("/api/sessions/:id", async (c) => {
   }
   if (Object.keys(updates).length === 0) return c.json({ error: "No valid fields" }, 400);
   const [updated] = await db.update(sessions).set(updates).where(eq(sessions.id, id)).returning();
+  if (!updated) return c.text("Not found", 404);
+
+  // Auto queue: plan / refill right away when it has just been switched on, when the
+  // number of courts changed (a new court wants a match), or when a finished session
+  // is reopened. A no-op unless the session has Auto queue on and is active. Quiet on
+  // purpose -- the change above is already saved and must not turn into an error.
+  if (updates.autoQueue === true || updates.courtCount !== undefined || updates.status === "active") {
+    await syncAutoQueueQuietly(db, id);
+  }
   return c.json(presentSession(updated));
 });
 
@@ -975,6 +994,21 @@ app.post("/api/sessions/:id/queue/reorder", async (c) => {
   return c.json({ ok: true });
 });
 
+// POST /api/sessions/:id/auto-queue/rebuild -- host's "Rebuild" button. Throws away the
+// matches Auto queue planned that are still waiting in the queue and plans them again
+// from the situation right now (new levels, a different crowd...). Matches the host
+// built or queued by hand are left exactly as they are. Unlike the automatic refills,
+// a problem here is reported to the host, since they asked for exactly this.
+app.post("/api/sessions/:id/auto-queue/rebuild", async (c) => {
+  if (!(await requireHost(c.req.raw, hostSecret(c.env)))) return c.text("Unauthorized", 401);
+  const sessionId = Number(c.req.param("id"));
+  if (!Number.isFinite(sessionId)) return c.text("Invalid session id", 400);
+  const db = getDb(c.env.DATABASE_URL);
+  const ran = await syncAutoQueue(db, sessionId, { rebuild: true });
+  if (!ran) return c.json({ error: "Auto queue is off (or the session has ended) -- switch it on first." }, 400);
+  return c.json({ ok: true });
+});
+
 // PATCH/DELETE /api/players/:id
 app.patch("/api/players/:id", async (c) => {
   const id = Number(c.req.param("id"));
@@ -1018,6 +1052,13 @@ app.patch("/api/players/:id", async (c) => {
   if (Object.keys(updates).length === 0) return c.json({ error: "No valid fields" }, 400);
   const [updated] = await db.update(players).set(updates).where(eq(players.id, id)).returning();
   if (!updated) return c.text("Not found", 404);
+
+  // Someone going active / resting / inactive, or being approved / un-approved,
+  // changes who the Auto queue can plan with (no-op when Auto queue is off). Quiet:
+  // the player change above is already saved.
+  if (updates.status !== undefined || updates.approved !== undefined) {
+    await syncAutoQueueQuietly(db, updated.sessionId);
+  }
   return c.json(updated);
 });
 
@@ -1026,7 +1067,9 @@ app.delete("/api/players/:id", async (c) => {
   if (!Number.isFinite(id)) return c.text("Invalid player id", 400);
   if (!(await requireHost(c.req.raw, hostSecret(c.env)))) return c.text("Unauthorized", 401);
   const db = getDb(c.env.DATABASE_URL);
-  await db.delete(players).where(eq(players.id, id));
+  const [removed] = await db.delete(players).where(eq(players.id, id)).returning();
+  // A removed player can no longer be in a planned match (no-op when Auto queue is off).
+  if (removed) await syncAutoQueueQuietly(db, removed.sessionId);
   return c.json({ ok: true });
 });
 
@@ -1089,8 +1132,9 @@ app.patch("/api/matches/:id", async (c) => {
   await recomputeSessionStats(db, match.sessionId);
 
   // A fresh completion frees up a court -- pull the front of the actual queue onto it.
+  // With Auto queue on, `replan` also tops the queue back up for the new situation.
   if (!wasAlreadyCompleted) {
-    await fillOpenCourtsFromQueue(db, match.sessionId);
+    await fillOpenCourtsFromQueue(db, match.sessionId, { replan: true });
 
     // Rating engine (additive -- see worker/lib/rating.ts and ratingIntegration.ts).
     // Only runs on a match's first completion, never on a later score edit, so a
@@ -1140,7 +1184,7 @@ app.delete("/api/matches/:id", async (c) => {
   await db.delete(matches).where(eq(matches.id, id));
   await recomputeSessionStats(db, match.sessionId);
   if (wasOngoing) {
-    await fillOpenCourtsFromQueue(db, match.sessionId);
+    await fillOpenCourtsFromQueue(db, match.sessionId, { replan: true });
   }
   return c.json({ ok: true, ratingRollback });
 });

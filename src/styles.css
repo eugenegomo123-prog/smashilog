@@ -1164,6 +1164,81 @@ button.back-link {
   font-weight: 800;
 }
 
+/* ---- Auto queue switch (top of the host's Queue tab, HostSession.tsx) -- */
+
+.auto-card {
+  margin-bottom: 16px;
+}
+
+.auto-title {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.auto-card .subtitle {
+  margin: 2px 0 0;
+}
+
+/* Rebuild + its one-line explanation, under the switch while Auto is on. */
+.auto-more {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.auto-more .caption {
+  flex: 1;
+  min-width: 0;
+}
+
+/* A plain on/off switch (role="switch"), big enough for a thumb. */
+.switch {
+  position: relative;
+  flex: none;
+  width: 52px;
+  height: 30px;
+  padding: 0;
+  border: 2px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel-2);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--muted);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.switch[aria-checked="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.switch[aria-checked="true"] .switch-knob {
+  transform: translateX(22px);
+  background: var(--accent-ink);
+}
+
+.switch:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.switch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 /* ---- Queue tab (src/ui/QueueParts.tsx) -------------------------------- */
 
 .queue-card {
@@ -1201,6 +1276,20 @@ button.back-link {
 
 .queue-head .you-chip {
   margin: 0 0 0 auto;
+}
+
+/* "Auto" on a queued match the app planned itself (host's Queue list). */
+.queue-head .auto-tag {
+  margin-left: auto;
+  padding: 2px 8px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 /* The next four: the first match in line, picked out in green. */

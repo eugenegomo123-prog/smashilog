@@ -69,7 +69,27 @@ export async function recomputeSessionStats(db: Db, sessionId: number) {
     }
   }
 
+  const before = new Map(sessionPlayers.map((p) => [p.id, p]));
   for (const [id, stat] of byId.entries()) {
+    const lastMatchEndedAt = stat.lastMatchEndedAt ? new Date(stat.lastMatchEndedAt) : null;
+    // After one finished game only its four players' numbers change, so skip the
+    // players whose saved numbers already match: the result is exactly the same, but a
+    // 20-player session makes ~4 database calls here instead of ~20 (every call is a
+    // network round trip, and a request is only allowed so many).
+    const saved = before.get(id);
+    if (
+      saved &&
+      saved.wins === stat.wins &&
+      saved.losses === stat.losses &&
+      saved.pointsFor === stat.pointsFor &&
+      saved.pointsAgainst === stat.pointsAgainst &&
+      saved.currentStreak === stat.currentStreak &&
+      saved.gamesPlayed === stat.gamesPlayed &&
+      (saved.lastMatchEndedAt ? new Date(saved.lastMatchEndedAt).getTime() : null) ===
+        (lastMatchEndedAt ? lastMatchEndedAt.getTime() : null)
+    ) {
+      continue;
+    }
     await db.update(players).set({
       wins: stat.wins,
       losses: stat.losses,
@@ -77,7 +97,7 @@ export async function recomputeSessionStats(db: Db, sessionId: number) {
       pointsAgainst: stat.pointsAgainst,
       currentStreak: stat.currentStreak,
       gamesPlayed: stat.gamesPlayed,
-      lastMatchEndedAt: stat.lastMatchEndedAt ? new Date(stat.lastMatchEndedAt) : null,
+      lastMatchEndedAt,
     }).where(eq(players.id, id));
   }
 }

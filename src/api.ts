@@ -16,6 +16,10 @@ export interface Session {
   status: "active" | "ended";
   courtCount: number;
   courtLabels: Court[];
+  // The host's "Auto queue" switch on the Queue tab. While on, the server plans
+  // the next matches by itself and keeps the queue topped up (see
+  // worker/lib/queue.ts). Off by default.
+  autoQueue: boolean;
   createdAt: string;
   endedAt: string | null;
 }
@@ -98,6 +102,9 @@ export interface Match {
   startedAt: string;
   endedAt: string | null;
   queuePosition: number | null;
+  // True for a match the Auto queue planned by itself; false for one the host
+  // picked or built by hand.
+  auto: boolean;
 }
 
 // The court name to actually display for a match: resolves via the session's
@@ -377,7 +384,7 @@ export const api = {
   createSession: (name: string, courtCount: number) =>
     request<Session>("/sessions", { method: "POST", body: JSON.stringify({ name, courtCount }) }),
   getSession: (id: number) => request<Session>(`/sessions/${id}`),
-  updateSession: (id: number, updates: Partial<Pick<Session, "status" | "name" | "courtCount">>) =>
+  updateSession: (id: number, updates: Partial<Pick<Session, "status" | "name" | "courtCount" | "autoQueue">>) =>
     request<Session>(`/sessions/${id}`, { method: "PATCH", body: JSON.stringify(updates) }),
   // Renames one court by its stable id -- the id, and therefore any ongoing
   // match's link to this court, never changes. See worker/lib/courts.ts.
@@ -436,6 +443,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ order }),
     }),
+  // Host-only: throws away the matches Auto queue planned that are still waiting and
+  // plans them again from the current situation. Matches built by hand stay as they are.
+  rebuildAutoQueue: (sessionId: number) =>
+    request<{ ok: true }>(`/sessions/${sessionId}/auto-queue/rebuild`, { method: "POST" }),
   submitScore: (matchId: number, score1: number, score2: number) =>
     request<{ ok: true }>(`/matches/${matchId}`, { method: "PATCH", body: JSON.stringify({ score1, score2 }) }),
   // ratingRollback reports what happened to each registered player's rating as

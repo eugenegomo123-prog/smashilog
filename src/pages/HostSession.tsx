@@ -841,6 +841,81 @@ function ScoreCard({
   );
 }
 
+// The Auto queue switch. While it is on, the server plans the next matches and keeps
+// the queue topped up by itself (worker/lib/queue.ts, rules in worker/lib/autoqueue.ts)
+// -- this card only flips the switch and can ask for a Rebuild; nothing is planned on
+// this page. Matches the app planned carry an "Auto" tag in the Queue list below.
+function AutoQueueCard({ session, onChanged }: { session: Session; onChanged: () => void }) {
+  // Where the switch is heading while the change is being saved, so it answers the
+  // tap straight away instead of after the server has finished planning.
+  const [moving, setMoving] = useState<boolean | null>(null);
+  const [rebuilding, setRebuilding] = useState(false);
+  const on = moving ?? session.autoQueue === true;
+  const active = session.status === "active";
+
+  async function flip() {
+    const next = !on;
+    setMoving(next);
+    try {
+      await api.updateSession(session.id, { autoQueue: next });
+      await onChanged();
+    } catch (err) {
+      await alertDialog(err instanceof Error ? err.message : "Could not change Auto queue");
+    } finally {
+      setMoving(null);
+    }
+  }
+
+  async function rebuild() {
+    setRebuilding(true);
+    try {
+      await api.rebuildAutoQueue(session.id);
+      await onChanged();
+    } catch (err) {
+      await alertDialog(err instanceof Error ? err.message : "Could not rebuild the Auto queue");
+    } finally {
+      setRebuilding(false);
+    }
+  }
+
+  return (
+    <div className="card auto-card">
+      <div className="row between">
+        <div>
+          <div className="auto-title">Auto queue</div>
+          <div className="subtitle">
+            {on
+              ? "On — the next matches are planned for you, and the queue refills itself when a match ends."
+              : "Off — you pick every match yourself."}
+          </div>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={on}
+          aria-label="Auto queue"
+          className="switch"
+          onClick={flip}
+          disabled={moving !== null || !active}
+        >
+          <span className="switch-knob" />
+        </button>
+      </div>
+      {on && (
+        <div className="auto-more">
+          <div className="caption">
+            Rebuild plans the waiting Auto matches again; matches you added yourself stay. To add your own match,
+            remove a planned one below first.
+          </div>
+          <button className="btn small" onClick={rebuild} disabled={rebuilding || moving !== null || !active}>
+            {rebuilding ? "Rebuilding…" : "Rebuild"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function QueueTab({
   session,
   suggested,
@@ -883,6 +958,8 @@ function QueueTab({
 
   return (
     <div>
+      <AutoQueueCard session={session} onChanged={onChanged} />
+
       <div className="row between" style={{ marginBottom: 8 }}>
         <div className="caption">
           {suggested.length} suggested · {queued.length}/8 queued
@@ -1261,6 +1338,7 @@ function ActualQueueSection({
             n={i + 1}
             hero={i === 0}
             className={matchCardClass(flags)}
+            head={m.auto ? <span className="auto-tag">Auto</span> : undefined}
             actions={
               <div className="queue-actions">
                 <button

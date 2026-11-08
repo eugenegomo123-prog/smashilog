@@ -72,6 +72,12 @@ export const sessions = pgTable("sessions", {
   // predating this may still hold plain strings; see src/api.ts for the
   // reading-both-shapes note -- but every write path emits objects only.)
   courtLabels: jsonb("court_labels").notNull().default([]),
+  // The host's "Auto queue" switch (Queue tab). Off by default, so every existing
+  // session -- and every new one -- behaves exactly as before until the host turns
+  // it on. While on, the server plans the next matches by itself and keeps the
+  // queue topped up: the rules live in worker/lib/autoqueue.ts, and
+  // worker/lib/queue.ts's syncAutoQueue applies them to the database.
+  autoQueue: boolean("auto_queue").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   endedAt: timestamp("ended_at"),
 });
@@ -95,6 +101,13 @@ export const players = pgTable("players", {
   pointsAgainst: integer("points_against").notNull().default(0),
   currentStreak: integer("current_streak").notNull().default(0),
   gamesPlayed: integer("games_played").notNull().default(0),
+  // Extra games the Auto queue (worker/lib/autoqueue.ts) counts for this player
+  // when deciding who has played least, so someone who arrives late or comes back
+  // from a break is treated as having played about as much as everyone else
+  // instead of jumping the line. 0 for everybody unless the server sets it. It is
+  // never shown to players and never counted in their stats -- gamesPlayed above
+  // only ever reflects real, finished matches.
+  gamesBaseline: integer("games_baseline").notNull().default(0),
   lastMatchEndedAt: timestamp("last_match_ended_at"),
   // Another player's id, same session. Self-service (a participant sets their own).
   // No DB foreign key, to keep a self-referencing column simple -- validated in the
@@ -134,6 +147,12 @@ export const matches = pgTable("matches", {
   endedAt: timestamp("ended_at"),
   // Only meaningful while status is "queued" -- position in the actual queue (0 = front).
   queuePosition: integer("queue_position"),
+  // True for a match the Auto queue planned by itself (worker/lib/queue.ts's
+  // syncAutoQueue); false for one the host picked or built by hand. Only the Auto
+  // queue may drop or replace an auto match -- a hand-built one is never touched.
+  // Left as it is if the host switches Auto off, so the planned matches simply stay
+  // in the queue like any other.
+  auto: boolean("auto").notNull().default(false),
 });
 
 // One row per account per rated match -- an audit trail for the rating engine
