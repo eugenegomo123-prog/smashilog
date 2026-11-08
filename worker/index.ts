@@ -16,13 +16,15 @@ import {
 import { hashPassword, verifyPassword } from "./lib/passwords";
 import { regenerateQueue } from "./lib/regenerate";
 import {
+  autoQueueIsOn,
   fillOpenCourtsFromQueue,
-  nextQueuePosition,
+  makeRoomForManualMatch,
+  manualMatchLimits,
   syncAutoQueue,
   syncAutoQueueQuietly,
   MAX_QUEUE_LENGTH,
 } from "./lib/queue";
-import { playerIdsUnavailable, recomputeSessionStats } from "./lib/stats";
+import { recomputeSessionStats } from "./lib/stats";
 import { rateCompletedMatch, rollbackMatchRating, publicRatingView, ratingHistoryView } from "./lib/ratingIntegration";
 import { normalizeCourts, resizeCourts, type Court } from "./lib/courts";
 
@@ -875,15 +877,17 @@ app.post("/api/sessions/:id/assign-match", async (c) => {
   }
 
   const allMatches = await db.select().from(matches).where(eq(matches.sessionId, sessionId));
-  const queuedCount = allMatches.filter((m) => m.status === "queued").length;
-  if (queuedCount >= MAX_QUEUE_LENGTH) {
+  // With Auto queue on, the matches it planned are not "taken": the one added here goes
+  // ahead of them (see queue.ts), so they neither fill the queue nor block players.
+  const autoOn = await autoQueueIsOn(db, sessionId);
+  const { full, blocked: unavailable } = manualMatchLimits(allMatches, autoOn);
+  if (full) {
     return c.json({ error: `Queue is full (max ${MAX_QUEUE_LENGTH}) -- remove or play one first.` }, 400);
   }
 
   const involved = new Set<number>([...(suggested.team1 as number[]), ...(suggested.team2 as number[])]);
   const sessionPlayers = await db.select().from(players).where(eq(players.sessionId, sessionId));
   const playerMap = new Map(sessionPlayers.map((p) => [p.id, p]));
-  const unavailable = await playerIdsUnavailable(db, sessionId);
   for (const pid of involved) {
     const p = playerMap.get(pid);
     if (!p || !p.approved || p.status !== "active") {
@@ -894,7 +898,7 @@ app.post("/api/sessions/:id/assign-match", async (c) => {
     }
   }
 
-  const position = await nextQueuePosition(db, sessionId);
+  const position = await makeRoomForManualMatch(db, sessionId, [...involved], autoOn);
   await db
     .update(matches)
     .set({ status: "queued", queuePosition: position })
@@ -911,12 +915,13 @@ app.post("/api/sessions/:id/assign-match", async (c) => {
     await db.delete(matches).where(eq(matches.id, m.id));
   }
 
-  await fillOpenCourtsFromQueue(db, sessionId);
+  await fillOpenCourtsFromQueue(db, sessionId, { replan: true });
   return c.json({ ok: true });
 });
 
 // POST /api/sessions/:id/custom-match -- host manually builds both teams and adds
-// them to the end of the actual queue (also no court picked here anymore).
+// them to the actual queue (also no court picked here anymore): at the end, or -- with
+// Auto queue on -- ahead of the matches it planned, replacing any that share a player.
 app.post("/api/sessions/:id/custom-match", async (c) => {
   if (!(await requireHost(c.req.raw, hostSecret(c.env)))) return c.text("Unauthorized", 401);
   const sessionId = Number(c.req.param("id"));
@@ -932,12 +937,14 @@ app.post("/api/sessions/:id/custom-match", async (c) => {
   if (new Set(allIds).size !== 4) return c.json({ error: "Pick 4 different players" }, 400);
 
   const allMatches = await db.select().from(matches).where(eq(matches.sessionId, sessionId));
-  const queuedCount = allMatches.filter((m) => m.status === "queued").length;
-  if (queuedCount >= MAX_QUEUE_LENGTH) {
+  // With Auto queue on, the matches it planned are not "taken": the one added here goes
+  // ahead of them (see queue.ts), so they neither fill the queue nor block players.
+  const autoOn = await autoQueueIsOn(db, sessionId);
+  const { full, blocked: unavailable } = manualMatchLimits(allMatches, autoOn);
+  if (full) {
     return c.json({ error: `Queue is full (max ${MAX_QUEUE_LENGTH}) -- remove or play one first.` }, 400);
   }
 
-  const unavailable = await playerIdsUnavailable(db, sessionId);
   if (allIds.some((pid) => unavailable.has(pid))) {
     return c.json({ error: "One of these players is already on a court or queued" }, 400);
   }
@@ -959,13 +966,13 @@ app.post("/api/sessions/:id/custom-match", async (c) => {
     await db.delete(matches).where(eq(matches.id, m.id));
   }
 
-  const position = await nextQueuePosition(db, sessionId);
+  const position = await makeRoomForManualMatch(db, sessionId, allIds, autoOn);
   const [created] = await db
     .insert(matches)
     .values({ sessionId, courtLabel: "", team1, team2, status: "queued", queuePosition: position })
     .returning();
 
-  await fillOpenCourtsFromQueue(db, sessionId);
+  await fillOpenCourtsFromQueue(db, sessionId, { replan: true });
   return c.json(created, 201);
 });
 

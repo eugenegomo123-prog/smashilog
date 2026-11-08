@@ -14,13 +14,18 @@
 import { describe, it, expect } from "vitest";
 import { bestSplit, compareMetrics, matchQuality, EMPTY_HISTORY, type PlayerForMatchmaking } from "./matchmaking";
 import {
+  blockedForManualMatch,
   computeRestState,
+  isManualQueueFull,
   lookaheadModeFor,
   planAutoQueue,
+  planManualInsert,
+  playersNeededForLookahead,
   queueTargetLength,
   selectMatchesToStart,
   type AutoMatchInput,
   type AutoPlayerInput,
+  type ManualInsertPlan,
 } from "./autoqueue";
 
 // ---------------------------------------------------------------------------
@@ -95,6 +100,19 @@ describe("small helpers", () => {
     expect(lookaheadModeFor(15, 3)).toBe("small");
     expect(lookaheadModeFor(8, 1)).toBe("full");
     expect(lookaheadModeFor(7, 1)).toBe("small");
+  });
+
+  it("says how many players full look-ahead needs: 4 per court plus 4 spare", () => {
+    expect(playersNeededForLookahead(1)).toBe(8);
+    expect(playersNeededForLookahead(3)).toBe(16);
+    expect(playersNeededForLookahead(4)).toBe(20);
+    // 0 / odd court counts behave like 1 court, the same as everywhere else
+    expect(playersNeededForLookahead(0)).toBe(8);
+    for (const courts of [1, 2, 3, 4, 5]) {
+      const need = playersNeededForLookahead(courts);
+      expect(lookaheadModeFor(need, courts)).toBe("full");
+      expect(lookaheadModeFor(need - 1, courts)).toBe("small");
+    }
   });
 });
 
@@ -601,6 +619,277 @@ function mockSession(playerCount: number, courts: number, seed: number, minutes:
 
   return { ...measure(roster, all), longestQueue };
 }
+
+// ---------------------------------------------------------------------------
+// Matches the host builds by hand while Auto queue is on
+// ---------------------------------------------------------------------------
+
+// What the database does with a plan: remove the dropped matches, move the shifted
+// ones, then add the new match. Returns the queue in order, as [id, position].
+function applyManualPlan(queue: AutoMatchInput[], plan: ManualInsertPlan, newId: number): { id: number; position: number }[] {
+  const dropped = new Set(plan.dropIds);
+  const moved = new Map(plan.shift.map((s) => [s.id, s.position]));
+  const rows = queue
+    .filter((m) => !dropped.has(m.id))
+    .map((m) => ({ id: m.id, position: moved.get(m.id) ?? m.queuePosition ?? 0 }));
+  rows.push({ id: newId, position: plan.position });
+  return rows.sort((a, b) => a.position - b.position || a.id - b.id);
+}
+
+describe("isManualQueueFull / blockedForManualMatch", () => {
+  it("counts every queued match when Auto queue is off", () => {
+    nextMatchId = 1;
+    const seven = Array.from({ length: 7 }, (_, i) => waiting([1, 2, 3, 4], i, true));
+    expect(isManualQueueFull(seven, false)).toBe(false);
+    expect(isManualQueueFull([...seven, waiting([5, 6, 7, 8], 7, true)], false)).toBe(true);
+  });
+
+  it("does not count planned matches when Auto queue is on -- they can make room", () => {
+    nextMatchId = 1;
+    const planned = Array.from({ length: 8 }, (_, i) => waiting([1, 2, 3, 4], i, true));
+    expect(isManualQueueFull(planned, true)).toBe(false);
+    const mixed = [...Array.from({ length: 7 }, (_, i) => waiting([1, 2, 3, 4], i, false)), waiting([5, 6, 7, 8], 7, true)];
+    expect(isManualQueueFull(mixed, true)).toBe(false);
+    const handMade = Array.from({ length: 8 }, (_, i) => waiting([1, 2, 3, 4], i, false));
+    expect(isManualQueueFull(handMade, true)).toBe(true);
+    expect(isManualQueueFull(handMade, false, 9)).toBe(false);
+  });
+
+  it("matches on court, finished matches and the cap argument", () => {
+    nextMatchId = 1;
+    const m = [onCourt([1, 2, 3, 4], 0), finished([5, 6, 7, 8], 0, 10)];
+    expect(isManualQueueFull(m, true)).toBe(false);
+    expect(isManualQueueFull([waiting([1, 2, 3, 4], 0, false), waiting([5, 6, 7, 8], 1, false)], true, 2)).toBe(true);
+  });
+
+  it("blocks players on court always, and players in queued matches unless they are planned ones with Auto on", () => {
+    nextMatchId = 1;
+    const m = [
+      onCourt([1, 2, 3, 4], 0),
+      waiting([5, 6, 7, 8], 0, false), // host-built
+      waiting([9, 10, 11, 12], 1, true), // planned
+      finished([13, 14, 15, 16], 0, 10),
+    ];
+    const off = blockedForManualMatch(m, false);
+    expect([...off].sort(byNumber)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+    const on = blockedForManualMatch(m, true);
+    expect([...on].sort(byNumber)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+  });
+
+  it("with Auto off gives exactly the players a database 'on court or queued' check would", () => {
+    nextMatchId = 1;
+    const m = [onCourt([1, 2, 3, 4], 0), waiting([5, 6, 7, 8], 0, true), finished([9, 10, 11, 12], 0, 10)];
+    expect([...blockedForManualMatch(m, false)].sort(byNumber)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+  });
+});
+
+describe("planManualInsert", () => {
+  it("with Auto off: goes last, nothing removed or moved, planned flags ignored", () => {
+    nextMatchId = 1;
+    const q = [waiting([1, 2, 3, 4], 0, true), waiting([5, 6, 7, 8], 1, false), waiting([9, 10, 11, 12], 4, true)];
+    const plan = planManualInsert(q, [13, 14, 15, 16], false);
+    expect(plan).toEqual({ dropIds: [], position: 5, shift: [] });
+    expect(planManualInsert([], [1, 2, 3, 4], false)).toEqual({ dropIds: [], position: 0, shift: [] });
+  });
+
+  it("with Auto off, a clash is not its job to resolve -- nothing is dropped even if a planned match shares a player", () => {
+    nextMatchId = 1;
+    const q = [waiting([1, 2, 3, 4], 0, true)];
+    expect(planManualInsert(q, [1, 5, 6, 7], false).dropIds).toEqual([]);
+  });
+
+  it("with Auto on and an empty queue: position 0", () => {
+    expect(planManualInsert([], [1, 2, 3, 4], true)).toEqual({ dropIds: [], position: 0, shift: [] });
+  });
+
+  it("goes in front of the planned matches, which each move back one place", () => {
+    nextMatchId = 1;
+    const a = waiting([1, 2, 3, 4], 0, true);
+    const b = waiting([5, 6, 7, 8], 1, true);
+    const c = waiting([9, 10, 11, 12], 2, true);
+    const plan = planManualInsert([a, b, c], [13, 14, 15, 16], true);
+    expect(plan.dropIds).toEqual([]);
+    expect(plan.position).toBe(0);
+    expect(plan.shift).toEqual([
+      { id: a.id, position: 1 },
+      { id: b.id, position: 2 },
+      { id: c.id, position: 3 },
+    ]);
+  });
+
+  it("goes behind matches the host made earlier, in front of the planned ones", () => {
+    nextMatchId = 1;
+    const m1 = waiting([1, 2, 3, 4], 0, false);
+    const m2 = waiting([5, 6, 7, 8], 1, false);
+    const a = waiting([9, 10, 11, 12], 2, true);
+    const b = waiting([13, 14, 15, 16], 3, true);
+    const plan = planManualInsert([a, m2, b, m1], [17, 18, 19, 20], true); // input order does not matter
+    expect(plan.position).toBe(2);
+    expect(plan.shift).toEqual([
+      { id: a.id, position: 3 },
+      { id: b.id, position: 4 },
+    ]);
+  });
+
+  it("goes to the end when there are no planned matches behind it", () => {
+    nextMatchId = 1;
+    const q = [waiting([1, 2, 3, 4], 0, false), waiting([5, 6, 7, 8], 1, false)];
+    expect(planManualInsert(q, [9, 10, 11, 12], true)).toEqual({ dropIds: [], position: 2, shift: [] });
+  });
+
+  it("keeps a planned match that sits ahead of an older hand-made one where it is", () => {
+    nextMatchId = 1;
+    const a1 = waiting([1, 2, 3, 4], 0, true);
+    const m1 = waiting([5, 6, 7, 8], 1, false);
+    const a2 = waiting([9, 10, 11, 12], 2, true);
+    const plan = planManualInsert([a1, m1, a2], [13, 14, 15, 16], true);
+    expect(plan.position).toBe(2);
+    expect(plan.shift).toEqual([{ id: a2.id, position: 3 }]);
+  });
+
+  it("removes the planned matches that share a player, and only those", () => {
+    nextMatchId = 1;
+    const a = waiting([1, 2, 3, 4], 0, true);
+    const b = waiting([5, 6, 7, 8], 1, true);
+    const c = waiting([9, 10, 11, 12], 2, true);
+    const plan = planManualInsert([a, b, c], [2, 6, 13, 14], true);
+    expect(plan.dropIds.sort(byNumber)).toEqual([a.id, b.id].sort(byNumber));
+    const after = applyManualPlan([a, b, c], plan, 999);
+    expect(after.map((r) => r.id)).toEqual([999, c.id]);
+  });
+
+  it("never removes a match the host made, even if it shares a player", () => {
+    nextMatchId = 1;
+    const m = waiting([1, 2, 3, 4], 0, false);
+    const a = waiting([5, 6, 7, 8], 1, true);
+    // (the route refuses this before it gets here -- the planner is just never allowed to delete a host match)
+    expect(planManualInsert([m, a], [1, 9, 10, 11], true).dropIds).toEqual([]);
+  });
+
+  it("when the queue is full, the planned match at the very back makes the room", () => {
+    nextMatchId = 1;
+    const q = Array.from({ length: 8 }, (_, i) => waiting([4 * i + 1, 4 * i + 2, 4 * i + 3, 4 * i + 4], i, true));
+    const plan = planManualInsert(q, [101, 102, 103, 104], true);
+    expect(plan.dropIds).toEqual([q[7].id]);
+    expect(applyManualPlan(q, plan, 999).map((r) => r.id)).toEqual([999, ...q.slice(0, 7).map((m) => m.id)]);
+  });
+
+  it("when full of a mix, room is made from the planned ones only, back first", () => {
+    nextMatchId = 1;
+    const q = [
+      waiting([1, 2, 3, 4], 0, false),
+      waiting([5, 6, 7, 8], 1, true),
+      waiting([9, 10, 11, 12], 2, false),
+      waiting([13, 14, 15, 16], 3, true),
+      waiting([17, 18, 19, 20], 4, true),
+      waiting([21, 22, 23, 24], 5, false),
+      waiting([25, 26, 27, 28], 6, true),
+      waiting([29, 30, 31, 32], 7, true),
+    ];
+    const plan = planManualInsert(q, [101, 102, 103, 104], true);
+    expect(plan.dropIds).toEqual([q[7].id]);
+    const after = applyManualPlan(q, plan, 999).map((r) => r.id);
+    expect(after.length).toBe(8);
+    // right behind the host's last match (the one at place 6 in the old list), ahead of the planned one that follows
+    expect(after).toEqual([q[0].id, q[1].id, q[2].id, q[3].id, q[4].id, q[5].id, 999, q[6].id]);
+  });
+
+  it("a clash that already frees a place means nothing else is removed", () => {
+    nextMatchId = 1;
+    const q = Array.from({ length: 8 }, (_, i) => waiting([4 * i + 1, 4 * i + 2, 4 * i + 3, 4 * i + 4], i, true));
+    const plan = planManualInsert(q, [1, 101, 102, 103], true);
+    expect(plan.dropIds).toEqual([q[0].id]);
+  });
+
+  it("uses a free queue number instead of moving matches when there is a gap", () => {
+    nextMatchId = 1;
+    const m = waiting([1, 2, 3, 4], 0, false);
+    const a = waiting([5, 6, 7, 8], 5, true);
+    const plan = planManualInsert([m, a], [9, 10, 11, 12], true);
+    expect(plan).toEqual({ dropIds: [], position: 1, shift: [] });
+  });
+
+  it("only moves as many matches as it must when numbers are uneven", () => {
+    nextMatchId = 1;
+    const a = waiting([1, 2, 3, 4], 0, true);
+    const b = waiting([5, 6, 7, 8], 1, true);
+    const c = waiting([9, 10, 11, 12], 4, true);
+    const plan = planManualInsert([a, b, c], [13, 14, 15, 16], true);
+    expect(plan.position).toBe(0);
+    expect(plan.shift).toEqual([
+      { id: a.id, position: 1 },
+      { id: b.id, position: 2 },
+    ]); // c already has room
+  });
+
+  it("handles matches stored without a queue number as position 0", () => {
+    nextMatchId = 1;
+    const a = { ...waiting([1, 2, 3, 4], 0, true), queuePosition: null };
+    const plan = planManualInsert([a], [5, 6, 7, 8], true);
+    expect(applyManualPlan([a], plan, 999).map((r) => r.id)).toEqual([999, a.id]);
+  });
+
+  it("random queues: the order is [kept before] + new + [kept after], numbers are unique, nothing but planned matches is removed", () => {
+    const rand = seeded(77);
+    let checked = 0;
+    let withDrops = 0;
+    let withShifts = 0;
+    let madeRoom = 0;
+    for (let n = 0; n < 6000; n++) {
+      nextMatchId = 1;
+      const autoOn = rand() < 0.7;
+      const len = rand() < 0.25 ? 8 : Math.floor(rand() * 8); // 0..8, often a full queue
+      let position = rand() < 0.8 ? 0 : 1 + Math.floor(rand() * 2);
+      const queue: AutoMatchInput[] = [];
+      for (let i = 0; i < len; i++) {
+        const ids = [0, 1, 2, 3].map(() => 1 + Math.floor(rand() * 20));
+        if (new Set(ids).size < 4) continue;
+        queue.push(waiting(ids, position, rand() < 0.6));
+        position += 1 + (rand() < 0.2 ? Math.floor(rand() * 3) : 0); // sometimes a gap
+      }
+      if (isManualQueueFull(queue, autoOn)) continue;
+      // four players the route would let through (not on court, not in a match of the host's)
+      const blocked = blockedForManualMatch(queue, autoOn);
+      const open = Array.from({ length: 20 }, (_, i) => i + 1).filter((id) => !blocked.has(id));
+      if (open.length < 4) continue;
+      const involved: number[] = [];
+      while (involved.length < 4) involved.push(open.splice(Math.floor(rand() * open.length), 1)[0]);
+
+      const plan = planManualInsert(queue, involved, autoOn);
+      const after = applyManualPlan(queue, plan, 999);
+      checked++;
+      if (plan.dropIds.length > 0) withDrops++;
+      if (plan.shift.length > 0) withShifts++;
+      if (autoOn && queue.length === 8 && plan.dropIds.length > 0) madeRoom++;
+
+      expect(after.length).toBeLessThanOrEqual(8);
+      expect(new Set(after.map((r) => r.position)).size).toBe(after.length);
+      for (const id of plan.dropIds) expect(queue.find((m) => m.id === id)?.auto).toBe(true);
+      if (!autoOn) {
+        expect(plan.dropIds).toEqual([]);
+        expect(after[after.length - 1].id).toBe(999);
+      } else {
+        // every planned match sharing a player is gone; every host-made match is still there
+        const clashing = queue.filter((m) => m.auto && idsOf(m).some((id) => involved.includes(id))).map((m) => m.id);
+        for (const id of clashing) expect(plan.dropIds.includes(id)).toBe(true);
+        for (const m of queue.filter((x) => !x.auto)) expect(after.some((r) => r.id === m.id)).toBe(true);
+        // the new match sits behind every host-made match and ahead of every planned one that is left
+        const at999 = after.findIndex((r) => r.id === 999);
+        const manualIds = new Set(queue.filter((m) => !m.auto).map((m) => m.id));
+        const lastManual = after.reduce((acc, r, i) => (manualIds.has(r.id) ? i : acc), -1);
+        expect(at999).toBeGreaterThan(lastManual);
+      }
+      // everyone who was already queued keeps their relative order
+      const before = queue.filter((m) => !plan.dropIds.includes(m.id)).sort((a, b) => (a.queuePosition ?? 0) - (b.queuePosition ?? 0) || a.id - b.id).map((m) => m.id);
+      expect(after.filter((r) => r.id !== 999).map((r) => r.id)).toEqual(before);
+    }
+    // enough of the interesting cases were really exercised
+    expect(checked).toBeGreaterThan(3000);
+    expect(withDrops).toBeGreaterThan(1000);
+    expect(withShifts).toBeGreaterThan(500);
+    expect(madeRoom).toBeGreaterThan(30);
+  });
+});
 
 describe("the mock-session checker", () => {
   it("notices a third game in a row, and a rest in between", () => {

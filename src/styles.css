@@ -1290,6 +1290,26 @@ button.back-link {
   min-width: 0;
 }
 
+/* "Small group" note in the Auto queue card: amber, like the other heads-ups on this tab. */
+.auto-hint {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--resting-bg);
+  color: var(--resting);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+/* Under the custom-match builder while Auto queue is on: what adding this match will replace. */
+.builder-note {
+  margin-top: 10px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
 /* A plain on/off switch (role="switch"), big enough for a thumb. */
 .switch {
   position: relative;

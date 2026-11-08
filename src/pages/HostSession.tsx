@@ -32,6 +32,9 @@ import { HistoryItem } from "../ui/HistoryParts";
 // duplicated so the grade shown here always matches the logic that actually
 // picked the match. See that file's header comment for why this is safe.
 import { matchQuality, completeBalancedMatch, type MatchQuality } from "../../worker/lib/matchmaking";
+// Pure rules shared with the Worker's Auto queue (no database in it), so the screen says exactly what
+// the server will do: how many players full planning needs, and which planned matches a new one replaces.
+import { lookaheadModeFor, planManualInsert, playersNeededForLookahead } from "../../worker/lib/autoqueue";
 
 type Tab = "players" | "courts" | "queue" | "ranking" | "history" | "settings";
 
@@ -852,13 +855,26 @@ function ScoreCard({
 // the queue topped up by itself (worker/lib/queue.ts, rules in worker/lib/autoqueue.ts)
 // -- this card only flips the switch and can ask for a Rebuild; nothing is planned on
 // this page. Matches the app planned carry an "Auto" tag in the Queue list below.
-function AutoQueueCard({ session, onChanged }: { session: Session; onChanged: () => void }) {
+function AutoQueueCard({
+  session,
+  players,
+  onChanged,
+}: {
+  session: Session;
+  players: Player[];
+  onChanged: () => void;
+}) {
   // Where the switch is heading while the change is being saved, so it answers the
   // tap straight away instead of after the server has finished planning.
   const [moving, setMoving] = useState<boolean | null>(null);
   const [rebuilding, setRebuilding] = useState(false);
   const on = moving ?? session.autoQueue === true;
   const active = session.status === "active";
+
+  // With few players, Auto queue cannot plan ahead (nobody is spare to swap in), so say so.
+  const courts = session.courtLabels.length || session.courtCount;
+  const activePlayers = players.filter((p) => p.approved && p.status === "active").length;
+  const tooSmall = on && active && lookaheadModeFor(activePlayers, courts) === "small";
 
   async function flip() {
     const next = !on;
@@ -908,11 +924,18 @@ function AutoQueueCard({ session, onChanged }: { session: Session; onChanged: ()
           <span className="switch-knob" />
         </button>
       </div>
+      {tooSmall && (
+        <div className="auto-hint" role="note">
+          {activePlayers < 4
+            ? "Not enough players yet — Auto queue needs at least 4 active players to plan a match."
+            : `Small group — Auto queue plans ahead best with ${playersNeededForLookahead(courts)} active players for ${courts} ${courts === 1 ? "court" : "courts"} (you have ${activePlayers}). Until then it only plans for players who are free right now, and someone may get three games in a row.`}
+        </div>
+      )}
       {on && (
         <div className="auto-more">
           <div className="caption">
-            Rebuild plans the waiting Auto matches again; matches you added yourself stay. To add your own match,
-            remove a planned one below first.
+            Rebuild plans the waiting Auto matches again; matches you added yourself stay. A match you build below goes
+            ahead of the planned ones and replaces any that use the same players.
           </div>
           <button className="btn small" onClick={rebuild} disabled={rebuilding || moving !== null || !active}>
             {rebuilding ? "Rebuilding…" : "Rebuild"}
@@ -947,11 +970,16 @@ function QueueTab({
   onChanged: () => void;
 }) {
   const [regenerating, setRegenerating] = useState(false);
-  const pool = eligiblePoolFor(players, ongoing, queued);
-  const anyStale = suggested.some((m) => isStale(m, pool));
+  // While Auto queue is on, the matches it planned don't hold anyone or take a place: a match
+  // the host adds goes ahead of them and replaces what is in the way (the server does that).
+  const autoOn = session.autoQueue === true && session.status === "active";
+  const handMade = autoOn ? queued.filter((m) => !m.auto) : queued;
+  const pool = eligiblePoolFor(players, ongoing, queued); // waiting and in no queued match at all
+  const pickable = eligiblePoolFor(players, ongoing, handMade); // can be put in a match the host builds now
+  const anyStale = suggested.some((m) => isStale(m, pickable));
   const justPlayed = justPlayedIds(history);
-  const restingLong = restingLongIds(pool);
-  const queueFull = queued.length >= 8;
+  const restingLong = restingLongIds(pickable);
+  const queueFull = handMade.length >= 8;
 
   // Available right now, noticeably behind on games (restingLong), and not
   // rescued by any of the current suggestions -- the real risk flagged
@@ -965,7 +993,7 @@ function QueueTab({
 
   return (
     <div>
-      <AutoQueueCard session={session} onChanged={onChanged} />
+      <AutoQueueCard session={session} players={players} onChanged={onChanged} />
 
       <div className="row between" style={{ marginBottom: 8 }}>
         <div className="caption">
@@ -1013,7 +1041,7 @@ function QueueTab({
           <SuggestionCard
             key={m.id}
             match={m}
-            pool={pool}
+            pool={pickable}
             justPlayed={justPlayed}
             restingLong={restingLong}
             queueFull={queueFull}
@@ -1037,6 +1065,7 @@ function QueueTab({
         players={players}
         ongoing={ongoing}
         queued={queued}
+        auto={autoOn}
         justPlayed={justPlayed}
         restingLong={restingLong}
         queueFull={queueFull}
@@ -1133,6 +1162,7 @@ function CustomMatchBuilder({
   players,
   ongoing,
   queued,
+  auto,
   justPlayed,
   restingLong,
   queueFull,
@@ -1142,13 +1172,18 @@ function CustomMatchBuilder({
   players: Player[];
   ongoing: Match[];
   queued: Match[];
+  // Auto queue is on: players who are only in a match it planned can still be picked
+  // (that planned match is replaced), and the new match goes ahead of the planned ones.
+  auto: boolean;
   justPlayed: Set<number>;
   restingLong: Set<number>;
   queueFull: boolean;
   sessionId: number;
   onChanged: () => void;
 }) {
-  const busy = new Set([...ongoing, ...queued].flatMap((m) => [...m.team1, ...m.team2]));
+  const handMade = auto ? queued.filter((m) => !m.auto) : queued;
+  const inPlanned = new Set((auto ? queued.filter((m) => m.auto) : []).flatMap((m) => [...m.team1, ...m.team2]));
+  const busy = new Set([...ongoing, ...handMade].flatMap((m) => [...m.team1, ...m.team2]));
   const eligible = players
     .filter((p) => p.approved && p.status === "active" && !busy.has(p.id))
     .sort((a, b) => LEVELS.indexOf(a.level) - LEVELS.indexOf(b.level) || a.name.localeCompare(b.name));
@@ -1167,8 +1202,14 @@ function CustomMatchBuilder({
   }
 
   function flagsFor(id: number) {
-    return `${justPlayed.has(id) ? " 🥵" : ""}${restingLong.has(id) ? " ⏳" : ""}`;
+    return `${justPlayed.has(id) ? " 🥵" : ""}${restingLong.has(id) ? " ⏳" : ""}${inPlanned.has(id) ? " 📋" : ""}`;
   }
+
+  // Once all four are picked: how many planned matches adding this match would replace -- worked
+  // out by the same rule the server uses (those sharing a player with it, plus the last ones
+  // if the queue is full).
+  const picked = chosen.filter((v): v is number => v !== "");
+  const replaced = auto && !queueFull && picked.length === 4 ? planManualInsert(queued, picked, true).dropIds.length : 0;
 
   // Fills in whichever of this team's two slots are still empty from
   // `resultTeam` (completeBalancedMatch's pick for this team -- the host's
@@ -1276,13 +1317,19 @@ function CustomMatchBuilder({
         </button>
       </div>
       {error && <div className="error-text" style={{ marginTop: 8 }}>{error}</div>}
+      {replaced > 0 && (
+        <div className="builder-note">
+          Adding this match replaces {replaced === 1 ? "1 planned match" : `${replaced} planned matches`}. Auto queue
+          plans new ones after it.
+        </div>
+      )}
       {eligible.length < 4 && (
         <div className="empty-state" style={{ padding: "12px 0 0" }}>
           Need at least 4 active, unassigned players to build a custom match.
         </div>
       )}
       <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 8 }}>
-        🏆 competitive · 😎 chill · 🥵 just played · ⏳ waiting a while
+        🏆 competitive · 😎 chill · 🥵 just played · ⏳ waiting a while{auto ? " · 📋 in a planned match" : ""}
       </div>
     </div>
   );

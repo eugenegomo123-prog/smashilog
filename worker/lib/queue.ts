@@ -1,7 +1,15 @@
 import { and, eq, inArray } from "drizzle-orm";
 import type { Db } from "../../db";
 import { matches, players, sessions } from "../../db/schema";
-import { planAutoQueue, selectMatchesToStart, type AutoMatchInput, type AutoPlayerInput } from "./autoqueue";
+import {
+  blockedForManualMatch,
+  isManualQueueFull,
+  planAutoQueue,
+  planManualInsert,
+  selectMatchesToStart,
+  type AutoMatchInput,
+  type AutoPlayerInput,
+} from "./autoqueue";
 import { isCourtOccupied, normalizeCourts, type Court } from "./courts";
 
 // The queue: how queued matches reach the courts, and -- when the host has the
@@ -59,6 +67,56 @@ function toAutoMatches(rows: MatchRow[]): AutoMatchInput[] {
       queuePosition: m.queuePosition,
       auto: m.auto,
     }));
+}
+
+// ---------------------------------------------------------------------------
+// Matches the host builds by hand (or picks from the suggestions).
+//
+// With Auto queue OFF these simply join the end of the queue, as they always have.
+// With it ON, the matches the app planned are only forecasts: a match the host adds
+// goes ahead of them, and any planned match that uses the same players is removed
+// (the Auto queue then plans around it). The rules are in autoqueue.ts; this part
+// is the database side, used by the assign-match / custom-match routes.
+// ---------------------------------------------------------------------------
+
+// Is the Auto queue running for this session (switched on, and the session still active)?
+export async function autoQueueIsOn(db: Db, sessionId: number): Promise<boolean> {
+  const [session] = await db.select().from(sessions).where(eq(sessions.id, sessionId));
+  return !!session && session.status === "active" && session.autoQueue;
+}
+
+// From the session's matches as already loaded: is there room for one more
+// hand-built match, and which players can't be used in one right now?
+export function manualMatchLimits(rows: MatchRow[], autoOn: boolean): { full: boolean; blocked: Set<number> } {
+  const entries = toAutoMatches(rows);
+  return {
+    full: isManualQueueFull(entries, autoOn, MAX_QUEUE_LENGTH),
+    blocked: blockedForManualMatch(entries, autoOn),
+  };
+}
+
+// Gets the queue ready for a hand-built match with these four players and returns the
+// queue_position to give it. Auto queue OFF: nothing is touched, it is just the next
+// number at the end. ON: planned matches in the way are deleted and the ones behind
+// the new spot move up one; reads the queue fresh, since time has passed since the
+// route first looked. Check manualMatchLimits (above) before calling this.
+export async function makeRoomForManualMatch(
+  db: Db,
+  sessionId: number,
+  involved: number[],
+  autoOn: boolean,
+): Promise<number> {
+  if (!autoOn) return nextQueuePosition(db, sessionId);
+
+  const rows = await db.select().from(matches).where(eq(matches.sessionId, sessionId));
+  const plan = planManualInsert(toAutoMatches(rows), involved, true, MAX_QUEUE_LENGTH);
+  if (plan.dropIds.length > 0) {
+    await db.delete(matches).where(inArray(matches.id, plan.dropIds));
+  }
+  for (const move of plan.shift) {
+    await db.update(matches).set({ queuePosition: move.position }).where(eq(matches.id, move.id));
+  }
+  return plan.position;
 }
 
 // ---------------------------------------------------------------------------

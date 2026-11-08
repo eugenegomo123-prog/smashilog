@@ -185,7 +185,7 @@ function idsOfMatch(m: { team1: number[]; team2: number[] }): number[] {
   return [...m.team1, ...m.team2];
 }
 
-function byQueueOrder(a: AutoMatchInput, b: AutoMatchInput): number {
+function byQueueOrder(a: { id: number; queuePosition: number | null }, b: { id: number; queuePosition: number | null }): number {
   return (a.queuePosition ?? 0) - (b.queuePosition ?? 0) || a.id - b.id;
 }
 
@@ -202,9 +202,16 @@ export function queueTargetLength(courtCount: number, maxQueueLength = DEFAULT_M
   return Math.min(maxQueueLength, Math.max(MIN_QUEUE_TARGET, LOOKAHEAD_ROUNDS * courts));
 }
 
-export function lookaheadModeFor(activePlayerCount: number, courtCount: number): LookaheadMode {
+// How many active players it takes for full look-ahead: 4 on each court plus a few
+// spares (SPARE_PLAYERS_FOR_LOOKAHEAD) so somebody can always be rested. The host's
+// Queue tab uses this too, to tell the host when the group is too small.
+export function playersNeededForLookahead(courtCount: number): number {
   const courts = Math.max(1, Math.floor(courtCount) || 1);
-  return activePlayerCount >= PLAYERS_PER_MATCH * courts + SPARE_PLAYERS_FOR_LOOKAHEAD ? "full" : "small";
+  return PLAYERS_PER_MATCH * courts + SPARE_PLAYERS_FOR_LOOKAHEAD;
+}
+
+export function lookaheadModeFor(activePlayerCount: number, courtCount: number): LookaheadMode {
+  return activePlayerCount >= playersNeededForLookahead(courtCount) ? "full" : "small";
 }
 
 function isPlayable(p: AutoPlayerInput): boolean {
@@ -722,4 +729,119 @@ export function selectMatchesToStart(args: {
     for (const id of ids) busy.add(id);
   }
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// Matches the host builds by hand while Auto queue is ON.
+//
+// The matches Auto queue has planned (auto === true) are only forecasts, so a match
+// the host builds takes priority over them:
+//   * players who are only in planned matches can still be picked -- any planned
+//     match that shares a player with the host's match is removed (Auto queue plans
+//     fresh ones around it afterwards);
+//   * the host's match goes ahead of the planned matches, but behind any match the
+//     host made earlier, so those keep their order;
+//   * if the queue is already full, the last planned matches make room.
+// Players on court, and players in a match the host made, are still taken.
+//
+// With Auto queue OFF none of this applies and the queue behaves exactly as it
+// always has: every queued match counts as taken, and the new one goes last.
+//
+// Like everything in this file these are plain functions on plain data; the
+// database work that applies the answer is in queue.ts.
+// ---------------------------------------------------------------------------
+
+// The part of a match these functions look at (AutoMatchInput has all of it).
+export type QueueEntry = Pick<AutoMatchInput, "id" | "status" | "team1" | "team2" | "queuePosition" | "auto">;
+
+// A queued match the host's own match may replace: a planned one, and only while
+// Auto queue is on.
+function isReplaceable(m: QueueEntry, autoOn: boolean): boolean {
+  return autoOn && m.auto;
+}
+
+// No room even after removing every planned match: the host's own matches alone
+// fill the queue.
+export function isManualQueueFull(
+  matches: QueueEntry[],
+  autoOn: boolean,
+  maxQueueLength = DEFAULT_MAX_QUEUE_LENGTH,
+): boolean {
+  return matches.filter((m) => m.status === "queued" && !isReplaceable(m, autoOn)).length >= maxQueueLength;
+}
+
+// Players who cannot go into a new hand-built match: everyone on court, and everyone
+// in a queued match that is not replaceable.
+export function blockedForManualMatch(matches: QueueEntry[], autoOn: boolean): Set<number> {
+  const blocked = new Set<number>();
+  for (const m of matches) {
+    if (m.status === "ongoing" || (m.status === "queued" && !isReplaceable(m, autoOn))) {
+      for (const id of idsOfMatch(m)) blocked.add(id);
+    }
+  }
+  return blocked;
+}
+
+export interface ManualInsertPlan {
+  // Planned matches to delete first (they share a player with the new match, or
+  // they are the last ones and the queue needs the room).
+  dropIds: number[];
+  // The queue_position to give the new match.
+  position: number;
+  // Waiting matches that move to a new queue_position to make space for it.
+  shift: { id: number; position: number }[];
+}
+
+// Where a hand-built match goes, and what has to move for it. Call it only after
+// isManualQueueFull() and blockedForManualMatch() have said the match is allowed.
+export function planManualInsert(
+  matches: QueueEntry[],
+  involved: number[],
+  autoOn: boolean,
+  maxQueueLength = DEFAULT_MAX_QUEUE_LENGTH,
+): ManualInsertPlan {
+  const pos = (m: QueueEntry) => m.queuePosition ?? 0;
+  const mine = new Set(involved);
+  const dropIds: number[] = [];
+  let keep = matches.filter((m) => m.status === "queued").sort(byQueueOrder);
+
+  if (autoOn) {
+    // 1. Planned matches that use any of the same players.
+    const clash = (m: QueueEntry) => m.auto && idsOfMatch(m).some((id) => mine.has(id));
+    for (const m of keep) if (clash(m)) dropIds.push(m.id);
+    keep = keep.filter((m) => !clash(m));
+    // 2. Still no room for one more: the planned matches at the back go.
+    for (let i = keep.length - 1; i >= 0 && keep.length + 1 > maxQueueLength; i--) {
+      if (!keep[i].auto) continue;
+      dropIds.push(keep[i].id);
+      keep = keep.filter((_, j) => j !== i);
+    }
+  }
+
+  // Where it sits: behind the last match the host made (Auto on) -- or, with Auto
+  // off, at the very end.
+  let at = keep.length;
+  if (autoOn) {
+    at = 0;
+    keep.forEach((m, i) => {
+      if (!m.auto) at = i + 1;
+    });
+  }
+
+  if (at >= keep.length) {
+    // The end of the queue: the number the queue has always handed out next.
+    return { dropIds, position: keep.length ? Math.max(...keep.map(pos)) + 1 : 0, shift: [] };
+  }
+
+  // In front of keep[at]. Use a free number if there is one; otherwise move the
+  // matches behind it up by one (only as far as needed to keep them in order).
+  const position = at > 0 ? pos(keep[at - 1]) + 1 : 0;
+  const shift: ManualInsertPlan["shift"] = [];
+  let previous = position;
+  for (let j = at; j < keep.length; j++) {
+    const to = Math.max(pos(keep[j]), previous + 1);
+    if (to !== pos(keep[j])) shift.push({ id: keep[j].id, position: to });
+    previous = to;
+  }
+  return { dropIds, position, shift };
 }
