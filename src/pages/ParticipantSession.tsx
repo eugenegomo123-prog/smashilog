@@ -23,7 +23,7 @@ import { SessionHeader } from "../ui/SessionHeader";
 import { StatTiles } from "../ui/StatTiles";
 import { NextUp } from "../ui/NextUp";
 import { CourtHead, OpenCourt } from "../ui/CourtParts";
-import { courtSlots, eligiblePoolFor } from "../ui/live";
+import { courtSlots, eligiblePoolFor, myQueuedMatch, type MyQueuedMatch } from "../ui/live";
 import { QueueMatchCard, QueueTeams, WaitingChips } from "../ui/QueueParts";
 import { RankLegend, RankRow } from "../ui/RankRows";
 import { HistoryItem } from "../ui/HistoryParts";
@@ -370,6 +370,7 @@ export default function ParticipantSession() {
                 ongoing={matchData.ongoing}
                 queued={matchData.queued}
                 courtLabels={session.courtLabels}
+                autoQueue={session.autoQueue}
               />
             )}
             <div className="section-head" style={{ marginBottom: 0 }}>
@@ -391,6 +392,9 @@ export default function ParticipantSession() {
             playerById={playerById}
             onOpenQueue={() => setTab("queue")}
             myId={myId}
+            ongoing={matchData.ongoing}
+            courtLabels={session.courtLabels}
+            auto={session.autoQueue}
           />
         </div>
       )}
@@ -612,13 +616,41 @@ function statusColors(status: MyStatus): { bg: string; fg: string } {
   }
 }
 
-function StatusCardBody({ status }: { status: MyStatus }) {
+// A queued match from the player's own side: "You & Mia vs Joe & Ana".
+function myMatchLine(info: MyQueuedMatch, nameOf: (id: number) => string): string {
+  const mine = ["You", ...(info.partner != null ? [nameOf(info.partner)] : [])].join(" & ");
+  return `${mine} vs ${info.opponents.map(nameOf).join(" & ")}`;
+}
+
+// `next` is the player's next queued match, passed only when it's worth showing
+// (see HomeStatus): then "on court" gets a "Next match" block under it and
+// "queued" gets who they'll play with and against.
+function StatusCardBody({
+  status,
+  next,
+  nameOf,
+}: {
+  status: MyStatus;
+  next?: MyQueuedMatch | null;
+  nameOf?: (id: number) => string;
+}) {
+  const nextLine = next && nameOf ? myMatchLine(next, nameOf) : "";
   switch (status.kind) {
     case "onCourt":
       return (
-        <div>
+        // (With a next match underneath, the block takes the whole row so the
+        // divider line runs right up to the level icon.)
+        <div style={next && nextLine ? { flex: 1 } : undefined}>
           <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.03 }}>🏸 ON COURT NOW</div>
           <div style={{ fontSize: 22, fontWeight: 800, marginTop: 2 }}>Head to {status.courtLabel}</div>
+          {next && nextLine && (
+            <div className="status-next">
+              <div className="status-next-label">
+                Next match · {next.position === 1 ? "first in line" : `#${next.position} in line`}
+              </div>
+              <div className="status-next-teams">{nextLine}</div>
+            </div>
+          )}
         </div>
       );
     case "queued":
@@ -631,6 +663,11 @@ function StatusCardBody({ status }: { status: MyStatus }) {
               ? "You're next — get ready!"
               : `${status.position - 1} match${status.position - 1 === 1 ? "" : "es"} ahead of you`}
           </div>
+          {nextLine && (
+            <div className="status-next-teams" style={{ marginTop: 6 }}>
+              {nextLine}
+            </div>
+          )}
         </div>
       );
     case "pending":
@@ -670,22 +707,35 @@ function HomeStatus({
   ongoing,
   queued,
   courtLabels,
+  autoQueue,
 }: {
   player: Player;
   players: Player[];
   ongoing: Match[];
   queued: Match[];
   courtLabels: Court[];
+  autoQueue: boolean;
 }) {
   const status = myCurrentStatus(player, ongoing, queued, courtLabels);
   const { bg, fg } = statusColors(status);
+
+  // The look-ahead: the player's next queued match. While they're still on court
+  // it's shown whenever they have one (that's the projection -- only Auto queue
+  // plans a match for someone who's still playing); a player who's already
+  // waiting in line sees it only when Auto queue is on, so the card is exactly
+  // as it always was for the host's own queue.
+  const next =
+    status.kind === "onCourt" || (status.kind === "queued" && autoQueue)
+      ? myQueuedMatch(player.id, queued)
+      : null;
+  const nameOf = (id: number) => players.find((p) => p.id === id)?.name ?? "?";
 
   // (A separate "Your match" card used to sit under this one. It repeated the
   // same four names that the Courts list directly below already shows, with
   // the player's own court highlighted in green, so it was removed.)
   return (
     <div className="card row between" style={{ background: bg, color: fg, alignItems: "center" }}>
-      <StatusCardBody status={status} />
+      <StatusCardBody status={status} next={next} nameOf={nameOf} />
       <div className="level-pill" style={{ width: 44, height: 44, fontSize: 22 }} title={LEVEL_LABEL[player.level]}>{LEVEL_ICON[player.level]}</div>
     </div>
   );

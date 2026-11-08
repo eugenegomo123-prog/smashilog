@@ -1144,6 +1144,102 @@ button.back-link {
   border-top: 1px solid var(--border);
 }
 
+/* Look-ahead (src/ui/NextUp.tsx): "Waiting for Court 2 to finish" under the first
+   match, when one of its players is still playing there. */
+.next-wait {
+  margin-top: 8px;
+  text-align: center;
+}
+
+/* With Auto queue on, the next couple of matches after the first, as short
+   numbered rows (the number is the match's place in the queue). */
+.next-then {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 6px 0 0;
+  border-top: 1px solid var(--border);
+}
+
+.next-then-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 5px 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.next-then-num {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.next-then-names {
+  min-width: 0;
+}
+
+.next-then-team {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+.next-then-vs {
+  margin: 0 2px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* The signed-in player's own name / row. */
+.next-name.me {
+  color: var(--accent);
+}
+
+.next-then-row.mine .next-then-num {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+/* A player's next match, inside their status card on the Home tab
+   (ParticipantSession.tsx's HomeStatus): under "Head to Court 1" while they're
+   still on court, or under their place in line when Auto queue is on. */
+.status-next {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.status-next-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.status-next-teams {
+  margin-top: 2px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
 .match-card.next-card.empty {
   text-align: center;
   color: var(--muted);

@@ -39,6 +39,43 @@ export function courtSlots(courts: Court[], ongoing: Match[]): { slots: CourtSlo
   return { slots, extra: ongoing.filter((m) => !claimed.has(m.id)) };
 }
 
+// The matches now on court that a queued match is still waiting for: any that has
+// at least one of its players in it. This only happens with Auto queue's
+// look-ahead -- the host's own queue never holds anyone who is on a court.
+export function matchesStillBlocking(queuedMatch: Match, ongoing: Match[]): Match[] {
+  const ids = new Set([...queuedMatch.team1, ...queuedMatch.team2]);
+  return ongoing.filter((m) => [...m.team1, ...m.team2].some((id) => ids.has(id)));
+}
+
+// "Court 1", "Court 1 and Court 2", "Court 1, Court 2 and Court 3".
+export function joinLabels(labels: string[]): string {
+  if (labels.length <= 1) return labels.join("");
+  return `${labels.slice(0, -1).join(", ")} and ${labels[labels.length - 1]}`;
+}
+
+// A player's next match in the queue, seen from their own side: where it sits in
+// the queue (1 = first in line), who they partner and who they face.
+export interface MyQueuedMatch {
+  match: Match;
+  position: number;
+  partner: number | null;
+  opponents: number[];
+}
+
+export function myQueuedMatch(playerId: number, queued: Match[]): MyQueuedMatch | null {
+  const index = queued.findIndex((m) => m.team1.includes(playerId) || m.team2.includes(playerId));
+  if (index === -1) return null;
+  const match = queued[index];
+  const ownTeam = match.team1.includes(playerId) ? match.team1 : match.team2;
+  const otherTeam = ownTeam === match.team1 ? match.team2 : match.team1;
+  return {
+    match,
+    position: index + 1,
+    partner: ownTeam.find((id) => id !== playerId) ?? null,
+    opponents: otherTeam,
+  };
+}
+
 // How long a match has been on court, kept short for a card corner:
 // "just started", "14m", "1h 05m".
 export function playTime(startedAt: string): string {

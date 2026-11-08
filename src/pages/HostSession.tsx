@@ -733,7 +733,14 @@ function CourtsTab({
           />
         ))}
       </div>
-      <NextUp queued={queued} playerById={playerById} onOpenQueue={onOpenQueue} />
+      <NextUp
+        queued={queued}
+        playerById={playerById}
+        onOpenQueue={onOpenQueue}
+        ongoing={ongoing}
+        courtLabels={session.courtLabels}
+        auto={session.autoQueue}
+      />
     </div>
   );
 }
