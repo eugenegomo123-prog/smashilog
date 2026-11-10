@@ -714,7 +714,10 @@ function CourtsTab({
         {slots.map(({ court, match }) =>
           match ? (
             <ScoreCard
-              key={court.id}
+              // Keyed by the MATCH, not the court: when a match ends the next one is put on the
+              // same court straight away, and keying by court made React keep the old card (and
+              // the score the host had typed) for it. A new match must start with empty boxes.
+              key={`match-${match.id}`}
               match={match}
               courtLabels={session.courtLabels}
               playerById={playerById}
@@ -722,7 +725,7 @@ function CourtsTab({
               onChanged={onChanged}
             />
           ) : (
-            <OpenCourt key={court.id} label={court.label} hint="fills automatically from the queue" />
+            <OpenCourt key={`court-${court.id}`} label={court.label} hint="fills automatically from the queue" />
           ),
         )}
         {extra.map((m) => (
