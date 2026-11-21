@@ -2495,20 +2495,46 @@ button.back-link {
 /* Home screen: the logo and buttons sit in the middle with a soft green
    glow behind them. The glow is a plain background, not animated. */
 .home-screen {
-  background: radial-gradient(ellipse 80% 340px at 50% 0, rgba(46, 229, 127, 0.1), transparent 70%) no-repeat;
+  background: radial-gradient(ellipse 80% 380px at 50% 0, rgba(46, 229, 127, 0.14), transparent 70%) no-repeat;
 }
 
 .home-main {
   margin: auto 0;
   padding-bottom: 40px;
+  text-align: center;
+}
+
+/* The mascot above the name. Its size follows the screen's height as well as its
+   width, so the whole Home screen still fits without scrolling on a short phone.
+   (The first width is for browsers that don't know "dvh" yet.) */
+.home-logo {
+  display: block;
+  width: clamp(150px, 30vh, 280px);
+  width: clamp(150px, 30dvh, 280px);
+  max-width: 78%;
+  height: auto;
+  margin: 0 auto 10px;
+}
+
+.home-main .brand {
+  justify-content: center;
 }
 
 .home-main .brand h1 {
-  font-size: 40px;
+  /* Big on a wide screen, but never so big that the name gets cut off on a narrow phone. */
+  font-size: clamp(40px, 13vw, 54px);
 }
 
 .home-main .big-btn {
   min-height: 64px;
+}
+
+/* Very short screens (old small phones, or a phone turned sideways): drop the extra
+   space under the buttons so everything still fits. */
+@media (max-height: 600px) {
+  .home-main {
+    padding-bottom: 0;
+  }
 }
 
 .host-corner-link {

@@ -1,6 +1,7 @@
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { Icon } from "../ui/Icon";
+import logo from "../assets/logo.webp";
 
 export default function Home() {
   const navigate = useNavigate();
@@ -9,6 +10,9 @@ export default function Home() {
   return (
     <div className="screen home-screen">
       <div className="home-main">
+        {/* The mascot. Decorative (the name is written right below it), so no alt text. The
+            width/height are the file's real size so the page doesn't jump while it loads. */}
+        <img className="home-logo" src={logo} width={520} height={521} alt="" decoding="async" />
         <div className="brand">
           <h1>
             Smashilog<span className="dot">.</span>

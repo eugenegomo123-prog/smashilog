@@ -231,8 +231,9 @@ session level so nobody can sandbag a low level to climb (`LEVEL_MMR_CAP`, with 
   accent; `--accent`, `--bg`, `--panel`, `--muted`, `--bad` …). Phone first: `.screen` is at most 560 px wide, with
   tablet and desktop rules from 768 px up, touch targets of 44–48 px, and `prefers-reduced-motion` honoured. Level
   mascots are the egg-to-chicken emoji (`LEVEL_ICON`: E egg, D hatchling, C chick, B chicken, A roast); controls,
-  tabs and arrows use `Icon`, not emoji. The join and registration QR images come from the
-  third-party `api.qrserver.com` (the URL being encoded is sent to it).
+  tabs and arrows use `Icon`, not emoji. The Home screen's mascot logo is `src/assets/logo.webp` (transparent
+  background, sized by `.home-logo` from the screen's height so Home never needs to scroll on a phone). The join and
+  registration QR images come from the third-party `api.qrserver.com` (the URL being encoded is sent to it).
 
 ## Testing and checking your work
 
