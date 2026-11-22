@@ -12,7 +12,7 @@ export default function Home() {
       <div className="home-main">
         {/* The mascot. Decorative (the name is written right below it), so no alt text. The
             width/height are the file's real size so the page doesn't jump while it loads. */}
-        <img className="home-logo" src={logo} width={520} height={521} alt="" decoding="async" />
+        <img className="home-logo" src={logo} width={560} height={511} alt="" decoding="async" />
         <div className="brand">
           <h1>
             Smashilog<span className="dot">.</span>
