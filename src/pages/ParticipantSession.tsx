@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   api,
+  ApiError,
   LEVELS,
   LEVEL_ICON,
   LEVEL_LABEL,
@@ -184,6 +185,7 @@ function resultsDateLabel(session: Session): string {
 export default function ParticipantSession() {
   const { id } = useParams();
   const sessionId = Number(id);
+  const navigate = useNavigate();
   const [session, setSession] = useState<Session | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
   const [matchData, setMatchData] = useState<{ ongoing: Match[]; history: Match[]; suggested: Match[]; queued: Match[] }>({
@@ -270,11 +272,39 @@ export default function ParticipantSession() {
   }, [isEnded]);
 
   async function load() {
-    const [s, p, m] = await Promise.all([
-      api.getSession(sessionId),
-      api.listPlayers(sessionId),
-      api.getMatches(sessionId),
-    ]);
+    let s: Session, p: Player[], m: typeof matchData;
+    try {
+      [s, p, m] = await Promise.all([
+        api.getSession(sessionId),
+        api.listPlayers(sessionId),
+        api.getMatches(sessionId),
+      ]);
+    } catch (err) {
+      // The session was deleted since this browser last opened it: forget the
+      // name saved for it and go back to the list, rather than sitting on a
+      // loading screen forever.
+      if (err instanceof ApiError && err.status === 404) {
+        localStorage.removeItem(playerKey(sessionId));
+        navigate("/join", { replace: true });
+        return;
+      }
+      throw err;
+    }
+    // A guest's name is remembered in this browser (see ParticipantJoin.tsx).
+    // If that player is gone from the session -- the host removed or rejected
+    // them -- the saved name points at nobody, and since "Join" skips straight
+    // here whenever a name is saved, they could never pick another. Forget it
+    // and, while the session is still running, send them back to choose again.
+    const savedId = myIdRef.current;
+    if (savedId && !api.isPlayerLoggedIn() && !p.some((x) => x.id === savedId)) {
+      localStorage.removeItem(playerKey(sessionId));
+      myIdRef.current = null;
+      setMyId(null);
+      if (s.status === "active") {
+        navigate(`/join/${sessionId}`, { replace: true });
+        return;
+      }
+    }
     setSession(s);
     setPlayers(p);
     setMatchData(m);

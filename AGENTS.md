@@ -62,10 +62,21 @@ here, update this file in the same change.
   swapped. **Without `PLAYER_AUTH_SECRET` the register, login and registration-QR routes refuse to run.**
   Registering needs a short-lived registration token that the host's Settings tab shows as a QR code
   (`POST /api/host/registration-token`).
+- **Saved logins can go stale, and the client cleans them up.** `isHost()` / `isPlayerLoggedIn()` only check that a
+  token is *there*, so an expired one (12 h host, 30 d player), a changed secret or a deleted account used to leave a
+  normal browser stuck — every call said `Unauthorized`, and the login screens bounce a "signed-in" browser away —
+  while incognito (nothing saved) worked. Now `GET /api/auth-check` reports whether each token sent is still good
+  (`true` / `false` / `null`); `dropExpiredLogins` in `src/api.ts` runs it when the app opens (`App.tsx`) and
+  whenever a request gets a bare-text `Unauthorized` 401, removes only a token the server said is `false` (never on
+  a network or server error), and fires `LOGINS_CHANGED_EVENT` so `App.tsx` redraws the page (`<Routes key=…>`),
+  which then falls back to its login screen. Keep wrong-password answers as JSON (`{ error }`) — a plain-text
+  401 is what means "your saved login is dead". Failed requests throw `ApiError` (an `Error` with `.status`).
 - **Session players are rows in `players`.** A *guest* has `accountId` null; their player id is kept in
   `localStorage` (`smashilog_player_<sessionId>`). A registered player has `accountId` set and is found again with
   `GET /api/sessions/:id/my-player`. **Every feature must keep working for guests.** Guests have no rating, photo
-  or cross-session history.
+  or cross-session history. If that saved id no longer matches a player in the session (the host removed or rejected
+  them), `ParticipantSession` forgets it and sends them back to `/join/:id` to pick again; a deleted session (404)
+  sends the browser back to `/join`.
 - A new player always starts `status: "inactive"` (joining isn't the same as having arrived), and `approved: false`
   unless the host added them. The host approves join requests and sets `level` (what the player asked for is kept
   in `requestedLevel`); `approved`, `name` and `level` are host-only. Status (`active` / `resting` / `inactive`),
@@ -225,7 +236,7 @@ session level so nobody can sandbag a low level to climb (`LEVEL_MMR_CAP`, with 
   `StatTiles` + `CountUp`, `CourtParts`, `NextUp`, `QueueParts`, `RankRows`, `HistoryParts`, `SessionRow`,
   `Skeleton`, and `live.ts` (pure helpers such as `eligiblePoolFor`, `courtSlots`, `myQueuedMatch`).
 - Top level of `src/` — `api.ts` (typed client and shared types; adds the auth headers and throws
-  `Error(server message)`), `dialogs.tsx`, `loading.tsx`, `shareImage.ts` (draws the shareable results PNG on a
+  `ApiError(server message)`), `dialogs.tsx`, `loading.tsx`, `shareImage.ts` (draws the shareable results PNG on a
   canvas), `overallRecord.tsx`, `partnerStats.tsx`, `accountAvatar.tsx`, `rankAvatar.tsx`, `imageUpload.ts`.
 - **Dialogs:** use `alertDialog` / `confirmDialog` / `promptDialog` from `src/dialogs.tsx` (awaited, themed,
   rendered by `DialogHost` in `App.tsx`) — never the browser's `alert` / `confirm` / `prompt`.

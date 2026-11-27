@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { api, LEVELS, LEVEL_ICON, LEVEL_LABEL, type Level, type Player, type Session } from "../api";
+import { api, ApiError, LEVELS, LEVEL_ICON, LEVEL_LABEL, type Level, type Player, type Session } from "../api";
 import { PageSkeleton } from "../ui/Skeleton";
 import { Icon } from "../ui/Icon";
 import { SessionRow } from "../ui/SessionRow";
@@ -32,13 +32,13 @@ export default function ParticipantJoin() {
       navigate(`/session/${sessionId}`);
       return;
     }
-    api.getSession(sessionId).then(setSession);
+    api.getSession(sessionId).then(setSession, leaveIfGone);
     api.listPlayers(sessionId).then(setPlayers);
   }, [sessionId, isLoggedIn]);
 
   useEffect(() => {
     if (!isLoggedIn) return;
-    api.getSession(sessionId).then(setSession);
+    api.getSession(sessionId).then(setSession, leaveIfGone);
     api.getMe().then((me) => setAccountLevel(me.level));
     api.getMyPlayerInSession(sessionId).then((p) => {
       setAccountPlayer(p);
@@ -46,6 +46,12 @@ export default function ParticipantJoin() {
       else if (p && !p.approved) setRequested(true);
     });
   }, [sessionId, isLoggedIn]);
+
+  // A session that has been deleted would otherwise leave this page on its
+  // loading screen forever (an old link or bookmark, say) -- go back to the list.
+  function leaveIfGone(err: unknown) {
+    if (err instanceof ApiError && err.status === 404) navigate("/join", { replace: true });
+  }
 
   const approvedRoster = players.filter((p) => p.approved);
 

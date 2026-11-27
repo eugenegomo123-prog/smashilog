@@ -84,6 +84,39 @@ app.post("/api/host-auth", async (c) => {
   return c.json({ token: await createHostToken(expected) });
 });
 
+// GET /api/auth-check -- "are the sign-ins this browser is holding still good?"
+// The browser keeps a host token (lasts 12 hours) and a player token (30 days)
+// in its storage. Once one of them runs out -- or the secret behind it changes,
+// or the account is deleted -- every request that needs it answers 401, yet the
+// page still believes you are signed in and never shows the login screen. This
+// lets the app ask, then throw the dead one away (see dropExpiredLogins in
+// src/api.ts). Each answer is true (still good), false (no longer good) or
+// null (that token wasn't sent, or can't be judged). Never an error for a bad
+// token: that is exactly the case this exists to report.
+app.get("/api/auth-check", async (c) => {
+  c.header("Cache-Control", "no-store");
+
+  const sentHost = !!c.req.header("x-host-token");
+  const host = sentHost ? await requireHost(c.req.raw, hostSecret(c.env)) : null;
+
+  let player: boolean | null = null;
+  const secret = playerAuthSecret(c.env);
+  if (c.req.header("x-player-token") && secret) {
+    const accountId = await requirePlayer(c.req.raw, secret);
+    if (!accountId) {
+      player = false;
+    } else {
+      // A correctly signed token for an account that has since been deleted is
+      // just as useless.
+      const db = getDb(c.env.DATABASE_URL);
+      const [row] = await db.select({ id: accounts.id }).from(accounts).where(eq(accounts.id, accountId));
+      player = !!row;
+    }
+  }
+
+  return c.json({ host, player });
+});
+
 // POST /api/register -- create a player account. Requires a valid registration
 // token, proving it came from a host's QR code.
 app.post("/api/register", async (c) => {

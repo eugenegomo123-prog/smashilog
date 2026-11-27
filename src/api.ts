@@ -129,17 +129,103 @@ function playerToken(): string | null {
   return localStorage.getItem("smashilog_player_token");
 }
 
-async function request<T>(path: string, opts: RequestInit = {}): Promise<T> {
-  const headers = new Headers(opts.headers);
-  headers.set("Content-Type", "application/json");
+function clearHostToken() {
+  localStorage.removeItem("smashilog_host_token");
+}
+
+function clearPlayerSession() {
+  localStorage.removeItem("smashilog_player_token");
+  localStorage.removeItem("smashilog_player_username");
+}
+
+// An error from the server that remembers the HTTP status, so a page can tell
+// "that doesn't exist any more" (404) from "something broke". It is still a
+// normal Error, so every existing `err instanceof Error ? err.message` keeps
+// working unchanged.
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+// Fired when a saved login turns out to be dead and has been thrown away.
+// App.tsx listens and redraws the current page, which then falls back to its
+// login screen exactly as if the browser had never been signed in.
+export const LOGINS_CHANGED_EVENT = "smashilog:logins-changed";
+
+function authHeaders(headers: Headers = new Headers()): Headers {
   const token = hostToken();
   if (token) headers.set("x-host-token", token);
   const pToken = playerToken();
   if (pToken) headers.set("x-player-token", pToken);
+  return headers;
+}
+
+// Asks the server whether the host / player login saved in this browser still
+// works, and removes whichever one doesn't. Without this a browser that was
+// signed in once keeps believing it is (the saved token is only ever checked
+// for being *there*), so after the token expires every page fails with
+// "Unauthorized" and the login screen -- which sends a "signed in" browser
+// straight past it -- can never be reached. A fresh/incognito window has
+// nothing saved, which is why it always worked there.
+//
+// Only an explicit "not valid" from the server removes anything: a network
+// hiccup or server error leaves the saved logins alone. Several callers at
+// once share a single check. Resolves true when something was removed.
+let loginCheck: Promise<boolean> | null = null;
+function dropExpiredLogins(): Promise<boolean> {
+  if (!hostToken() && !playerToken()) return Promise.resolve(false);
+  if (!loginCheck) {
+    loginCheck = (async () => {
+      try {
+        const res = await fetch("/api/auth-check", { headers: authHeaders(), cache: "no-store" });
+        if (!res.ok) return false;
+        const verdict: { host: boolean | null; player: boolean | null } = await res.json();
+        let removed = false;
+        if (verdict.host === false) {
+          clearHostToken();
+          removed = true;
+        }
+        if (verdict.player === false) {
+          clearPlayerSession();
+          removed = true;
+        }
+        if (removed) window.dispatchEvent(new Event(LOGINS_CHANGED_EVENT));
+        return removed;
+      } catch {
+        return false;
+      } finally {
+        loginCheck = null;
+      }
+    })();
+  }
+  return loginCheck;
+}
+
+async function request<T>(path: string, opts: RequestInit = {}): Promise<T> {
+  const headers = authHeaders(new Headers(opts.headers));
+  headers.set("Content-Type", "application/json");
   const res = await fetch(`/api${path}`, { ...opts, headers });
   if (!res.ok) {
-    const body = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(body.error || `Request failed (${res.status})`);
+    const raw = await res.text().catch(() => "");
+    let message = res.statusText;
+    try {
+      const body = JSON.parse(raw);
+      if (body && typeof body.error === "string") message = body.error;
+    } catch {
+      // Not JSON -- the plain-text answers ("Unauthorized", "Not found") land here.
+    }
+    // A bare "Unauthorized" means the server didn't accept a saved login (a
+    // wrong password comes back as JSON instead, so it never reaches this).
+    // Find out whether a saved login has simply gone stale; if so it is
+    // cleared and the page falls back to its login screen.
+    if (res.status === 401 && raw.trim() === "Unauthorized" && (await dropExpiredLogins())) {
+      throw new ApiError("Your sign-in has expired. Please sign in again.", 401);
+    }
+    throw new ApiError(message || `Request failed (${res.status})`, res.status);
   }
   if (res.status === 204) return undefined as T;
   return res.json();
@@ -149,8 +235,10 @@ export const api = {
   hostLogin: (password: string) =>
     request<{ token: string }>("/host-auth", { method: "POST", body: JSON.stringify({ password }) }),
   setHostToken: (token: string) => localStorage.setItem("smashilog_host_token", token),
-  clearHostToken: () => localStorage.removeItem("smashilog_host_token"),
+  clearHostToken,
   isHost: () => !!hostToken(),
+  // Run once when the app opens (see App.tsx) -- see dropExpiredLogins above.
+  checkSavedLogins: () => dropExpiredLogins().then(() => undefined),
 
   register: (username: string, password: string, token: string) =>
     request<{ token: string; username: string }>("/register", {
@@ -166,10 +254,7 @@ export const api = {
     localStorage.setItem("smashilog_player_token", token);
     localStorage.setItem("smashilog_player_username", username);
   },
-  clearPlayerSession: () => {
-    localStorage.removeItem("smashilog_player_token");
-    localStorage.removeItem("smashilog_player_username");
-  },
+  clearPlayerSession,
   isPlayerLoggedIn: () => !!playerToken(),
   playerUsername: () => localStorage.getItem("smashilog_player_username"),
   createRegistrationQr: () =>
