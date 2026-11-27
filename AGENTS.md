@@ -207,7 +207,10 @@ session level so nobody can sandbag a low level to climb (`LEVEL_MMR_CAP`, with 
 - A profile picture is a `data:` URL on the **account**, set once in the Account tab (`src/imageUpload.ts` shrinks
   it first). It is deliberately left out of the bulk roster list that every device polls; `<img>` tags use
   `GET /api/players/:id/picture` or `/api/accounts/:id/picture` with `pictureUpdatedAt` as a cache-buster
-  (`playerPictureUrl` / `accountPictureUrl` in `src/api.ts`).
+  (`playerPictureUrl` / `accountPictureUrl` in `src/api.ts`). **With no picture, every avatar shows the name's
+  initials** (`initialsOf` in `src/initials.ts`) on the `.avatar` circle — `AccountAvatar`, the session `Avatar` in
+  `ParticipantSession.tsx`, `RankAvatar` (both Ranking tabs) and the shared results image (`shareImage.ts`). Level
+  icons are only used as level markers (roster, queue names, the "My level" row), never as a stand-in picture.
 - Usernames can change once every 30 days (`accounts.usernameChangedAt`).
 
 ## Frontend map

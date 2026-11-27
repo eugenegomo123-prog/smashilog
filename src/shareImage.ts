@@ -4,18 +4,18 @@
 // both files; this module is shared rather than duplicated a third time).
 //
 // Design: reuses this app's existing dark "achievement" look (the same
-// black-to-dark-brown radial vignette as .rank-badge-card in styles.css) and
-// its egg-to-chicken LEVEL_ICON set, so a shared card reads as the same app
-// as the Rank tab -- right down to showing each account holder's own
-// uploaded photo next to their name/podium spot (same picture-or-level-icon
-// fallback as RankAvatar, src/rankAvatar.tsx), guests included via their
-// level icon. The canvas height is NOT fixed -- it's measured from the
+// black-to-dark-brown radial vignette as .rank-badge-card in styles.css), so a
+// shared card reads as the same app as the Rank tab -- right down to showing
+// each account holder's own uploaded photo next to their name/podium spot
+// (same picture-or-initials fallback as RankAvatar, src/rankAvatar.tsx),
+// guests included via their initials. The canvas height is NOT fixed -- it's measured from the
 // actual content first (podium + awards + however many standings rows fit),
 // so a 2-player pickup game gets a short, tight card instead of a mile of
 // empty space, and a big roster gets a taller one instead of being cut off.
 // Only a very large roster (12+ players outside the podium) gets truncated
 // with a "+N more players" line, so the image never grows unreasonably tall.
-import { LEVEL_ICON, playerPictureUrl, type Player } from "./api";
+import { playerPictureUrl, type Player } from "./api";
+import { initialsOf } from "./initials";
 
 export interface ShareAwards {
   mostGames: Player[];
@@ -119,8 +119,8 @@ function wrapLines(ctx: CanvasRenderingContext2D, text: string, maxWidth: number
 // Loads one player's uploaded photo for drawing into the canvas, resolving
 // null (never rejecting) rather than throwing on any failure -- no account,
 // no picture set (the endpoint 404s, same as RankAvatar's onError), a slow
-// connection, or being offline -- so a bad load just falls back to the level
-// icon instead of breaking the whole share image. The 5s cap keeps one stuck
+// connection, or being offline -- so a bad load just falls back to the initials
+// instead of breaking the whole share image. The 5s cap keeps one stuck
 // request from hanging the entire share/download flow.
 function loadPlayerPhoto(player: Player): Promise<HTMLImageElement | null> {
   if (!player.accountId) return Promise.resolve(null);
@@ -168,13 +168,39 @@ function drawClippedImage(ctx: CanvasRenderingContext2D, image: HTMLImageElement
   ctx.restore();
 }
 
+// The no-photo avatar: a dark navy disc (same gradient as the on-screen
+// .avatar class) with the player's initials centred on it.
+function fillInitialsDisc(ctx: CanvasRenderingContext2D, cx: number, cy: number, d: number) {
+  const r = d / 2;
+  const grad = ctx.createLinearGradient(cx - r, cy - r, cx + r, cy + r);
+  grad.addColorStop(0, "#2a3a5e");
+  grad.addColorStop(1, "#1e2b49");
+  ctx.fillStyle = grad;
+  ctx.fill();
+}
+
+function drawInitials(ctx: CanvasRenderingContext2D, cx: number, cy: number, d: number, name: string) {
+  const size = Math.round(d * 0.4);
+  // Scoped so textAlign/textBaseline/font never leak into whatever the
+  // caller draws next (bit us once already: it silently corrupted the
+  // standings-row name text drawn right after drawInlineAvatar below).
+  ctx.save();
+  ctx.textAlign = "center";
+  // An alphabetic baseline a little under the middle centres capital letters
+  // exactly (cap height is about 0.72 of the font size); "middle" sits too low.
+  ctx.textBaseline = "alphabetic";
+  ctx.font = `700 ${size}px ${FONT}`;
+  ctx.fillStyle = "#e8eef9";
+  ctx.fillText(initialsOf(name), cx, cy + size * 0.36);
+  ctx.restore();
+}
+
 function drawAvatar(
   ctx: CanvasRenderingContext2D,
   cx: number,
   cy: number,
   d: number,
-  gradStops: [string, string],
-  level: Player["level"],
+  name: string,
   image: HTMLImageElement | null,
 ) {
   const r = d / 2;
@@ -188,60 +214,46 @@ function drawAvatar(
     // Just a shadow-casting fill here -- the image itself (drawn below, once
     // the shadow is no longer active) fully covers it.
     ctx.fillStyle = "#0b1220";
+    ctx.fill();
   } else {
-    const grad = ctx.createLinearGradient(cx - r, cy - r, cx + r, cy + r);
-    grad.addColorStop(0, gradStops[0]);
-    grad.addColorStop(1, gradStops[1]);
-    ctx.fillStyle = grad;
+    fillInitialsDisc(ctx, cx, cy, d);
   }
-  ctx.fill();
   ctx.restore();
 
   if (image) drawClippedImage(ctx, image, cx, cy, d);
 
   ctx.beginPath();
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
-  ctx.strokeStyle = "rgba(0,0,0,0.25)";
+  // A light edge on the no-photo disc so it reads against the dark card (the
+  // on-screen one has the same 1px border); photos keep the soft dark edge.
+  ctx.strokeStyle = image ? "rgba(0,0,0,0.25)" : "rgba(147,163,191,0.45)";
   ctx.lineWidth = 2;
   ctx.stroke();
 
-  if (!image) {
-    // Scoped so textAlign/textBaseline/font never leak into whatever the
-    // caller draws next (bit us once already: it silently corrupted the
-    // standings-row name text drawn right after drawInlineAvatar below).
-    ctx.save();
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.font = `${Math.round(d * 0.46)}px ${FONT}`;
-    ctx.fillText(LEVEL_ICON[level] ?? "🐔", cx, cy + 2);
-    ctx.restore();
-  }
+  if (!image) drawInitials(ctx, cx, cy, d, name);
 }
 
-// Same picture-or-level-icon fallback as drawAvatar above, but with no
-// background circle behind the fallback icon -- matches the plain,
-// no-backdrop look of the on-screen .rank-row-icon next to a name in the
-// standings table, rather than the podium's colored badge.
+// Same picture-or-initials fallback as drawAvatar above, for the small circle
+// next to a name in the standings rows (the on-screen .rank-ava).
 function drawInlineAvatar(
   ctx: CanvasRenderingContext2D,
   cx: number,
   cy: number,
   d: number,
-  level: Player["level"],
+  name: string,
   image: HTMLImageElement | null,
 ) {
   if (image) {
     drawClippedImage(ctx, image, cx, cy, d);
     return;
   }
-  // Scoped (see drawAvatar's comment above) -- this one previously leaked
-  // textAlign: "center" into the player-name text drawn right after it.
-  ctx.save();
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.font = `${Math.round(d * 0.78)}px ${FONT}`;
-  ctx.fillText(LEVEL_ICON[level] ?? "🐔", cx, cy + 1);
-  ctx.restore();
+  ctx.beginPath();
+  ctx.arc(cx, cy, d / 2, 0, Math.PI * 2);
+  fillInitialsDisc(ctx, cx, cy, d);
+  ctx.strokeStyle = "rgba(147,163,191,0.45)";
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  drawInitials(ctx, cx, cy, d, name);
 }
 
 function drawPodiumColumn(
@@ -282,12 +294,7 @@ function drawPodiumColumn(
   }
 
   const avatarCy = y + avatarD / 2;
-  const gradStops: [string, string] = isGold
-    ? [COLORS.goldLight, COLORS.goldDeep]
-    : isSilver
-      ? [COLORS.silverLight, COLORS.silverDeep]
-      : [COLORS.bronzeLight, COLORS.bronzeDeep];
-  drawAvatar(ctx, cx, avatarCy, avatarD, gradStops, player.level, image);
+  drawAvatar(ctx, cx, avatarCy, avatarD, player.name, image);
   y += avatarD + gapAvatarName;
 
   ctx.textAlign = "center";
@@ -497,10 +504,10 @@ function drawContent(
       ctx.fillStyle = COLORS.mutedDim;
       ctx.fillText(String(rank), MARGIN + 28, midY);
 
-      const avatarD = 34;
+      const avatarD = 40;
       const avatarGap = 14;
       const nameStartX = MARGIN + 70 + avatarD + avatarGap;
-      drawInlineAvatar(ctx, MARGIN + 70 + avatarD / 2, ry + rowH / 2, avatarD, p.level, images.get(p.id) ?? null);
+      drawInlineAvatar(ctx, MARGIN + 70 + avatarD / 2, ry + rowH / 2, avatarD, p.name, images.get(p.id) ?? null);
 
       ctx.font = `600 26px ${FONT}`;
       ctx.fillStyle = COLORS.white;
